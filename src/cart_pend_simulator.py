@@ -80,19 +80,20 @@ NU = 1 #number of inputs in the system
 def build_system():
     sys = trep.System()
     frames = [
-        ty('yc',name=CARTFRAME, kinematic=True), [ 
+        ty('yc',name=CARTFRAME, mass=M), [ 
             rx('theta', name="pendulumShoulder"), [
                 tz(L, name=MASSFRAME, mass=M)]]]
     sys.import_frames(frames)
     trep.potentials.Gravity(sys, (0,0,-g))
     trep.forces.Damping(sys, B)
+    trep.forces.ConfigForce(sys,'yc','cart-force')
     return sys
 
 def proj_func(x):
-    x[0] = np.fmod(x[0]+np.pi, 2.0*np.pi)
-    if(x[0] < 0):
-        x[0] = x[0]+2.0*np.pi
-    x[0] = x[0] - np.pi
+    x[1] = np.fmod(x[1]+np.pi, 2.0*np.pi)
+    if(x[1] < 0):
+        x[1] = x[1]+2.0*np.pi
+    x[1] = x[1] - np.pi
 
 
 def build_sac_control(sys):
@@ -104,7 +105,7 @@ def build_sac_control(sys):
     sacsyst.usat = [[MAXSTEP, -MAXSTEP]]
     sacsyst.calc_tm = DT
     sacsyst.u2search = True
-    sacsyst.Q = np.diag([200,20,0,1]) # th, x, thd, xd
+    sacsyst.Q = np.diag([20,200,1,0]) # x, th, thd, xd
     sacsyst.P = np.diag([0,0,0,0])
     sacsyst.R = 0.3*np.identity(1)
     sacsyst.set_proj_func(proj_func)
@@ -227,7 +228,7 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(SIMFRAME,CONTFRAME))
             return
 
-        self.q0 = np.array([np.pi, SCALE*position[1]])#X=[th,yc]
+        self.q0 = np.array([SCALE*position[1], np.pi])#X=[yc, th]
         self.dq0 = np.zeros(self.system.nQd) 
         self.mvi.initialize_from_state(0, self.q0, self.dq0)
         self.sactrep.q = self.system.q
@@ -238,8 +239,8 @@ class PendSimulator:
         self.t_app = self.sacsys.t_app[1]-self.sacsys.t_app[0]
         
         #convert kinematic acceleration to new velocity&position
-        self.sacvel = self.system.dq[1]+self.sacsys.controls[0]*self.t_app
-        self.sacpos = self.system.q[1] + 0.5*(self.sacvel+self.system.dq[1])*self.t_app        
+        self.sacvel = self.system.dq[0]+self.sacsys.controls[0]*self.t_app
+        self.sacpos = self.system.q[0] + 0.5*(self.sacvel+self.system.dq[0])*self.t_app        
         self.wall = SCALE*position[1]
         #reset score values
         self.i = 0.
@@ -282,10 +283,10 @@ class PendSimulator:
             return
         temp = trepsys()
         temp.sys_time = self.system.t
-        temp.theta = self.system.q[0]
-        temp.y = self.system.q[1]
-        temp.dtheta = self.system.dq[0]
-        temp.dy = self.system.dq[1] #np.average(self.prevdq)
+        temp.theta = self.system.q[1]
+        temp.y = self.system.q[0]
+        temp.dtheta = self.system.dq[1]
+        temp.dy = self.system.dq[0] #np.average(self.prevdq)
         temp.sac = self.sacsys.controls[0]
         self.trep_pub.publish(temp)
         
@@ -328,7 +329,7 @@ class PendSimulator:
         self.marker_pub.publish(self.markers)
         qtemp = self.system.q
         proj_func(qtemp)
-        if abs(qtemp[0]) < 0.15 and abs(self.system.dq[0]) < 0.5 or self.system.t >= 50.0:
+        if abs(qtemp[1]) < 0.15 and abs(self.system.dq[1]) < 0.5 or self.system.t >= 50.0:
             rospy.loginfo("Success Time: %s"%round(self.system.t,2))
             rospy.loginfo("Final Score: %s"%round((self.i/self.n*100),2))
             self.force_pub.publish(OmniFeedback(force=GM.Vector3(), position=GM.Vector3()))
@@ -346,8 +347,8 @@ class PendSimulator:
         self.t_app = self.sacsys.t_app[1]-self.sacsys.t_app[0]
         
         #convert kinematic acceleration to new velocity&position
-        veltemp = self.system.dq[1]+self.sacsys.controls[0]*self.t_app
-        self.sacpos = self.system.q[1] +0.5*(self.sacvel+self.system.dq[1])*self.t_app
+        veltemp = self.system.dq[0]+self.sacsys.controls[0]*self.t_app
+        self.sacpos = self.system.q[0] +0.5*(self.sacvel+self.system.dq[0])*self.t_app
         if np.sign(self.sacvel) != np.sign(veltemp):#update wall if sac changes direction
             self.wall = self.prevq[0]
         self.sacvel = veltemp
