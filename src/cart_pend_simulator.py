@@ -89,6 +89,10 @@ def build_system():
     trep.forces.ConfigForce(sys,'yc','cart-force')
     return sys
 
+def force_func(a,th,dth):
+    F=M*g*np.cos(th)*np.sin(th)-L*M*np.sin(th)*dth**2 + (2*M-M*np.cos(th)**2)*a
+    return F
+
 def proj_func(x):
     x[1] = np.fmod(x[1]+np.pi, 2.0*np.pi)
     if(x[1] < 0):
