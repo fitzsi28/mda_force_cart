@@ -8,6 +8,6 @@
 
 #To run demo, with visualization
 
-$ roslaunch trep_omni_cart cart_pend.launch vis:=true
+$ roslaunch mda_force_cart cart_pend.launch vis:=true
 
  - Use buttons to initialize and end demo

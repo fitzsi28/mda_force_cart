@@ -62,7 +62,7 @@ M = 0.1 #kg
 L = 2.0 # m
 B = 0.01 # damping
 g = 9.81 #m/s^2
-SCALE = 16
+SCALE = 1
 Kp = 300.0/SCALE
 Kd = 50.0/SCALE
 Ks = 100.0/SCALE
@@ -290,6 +290,7 @@ class PendSimulator:
         except trep.ConvergenceError as e:
             rospy.loginfo("Could not take step: %s"%e.message)
             return
+       
         temp = trepsys()
         temp.sys_time = self.system.t
         temp.theta = self.system.q[1]
@@ -382,7 +383,7 @@ class PendSimulator:
             return
         #get force magnitude
         fsac = np.array([0.,sat_func(np.average(self.prevdq)),0.])
-        if self.sacsys.control[0]*self.system.u[0]>0:
+        if self.sacsys.controls[0]*self.system.u[0]>0:
             self.i+=1
             self.sac_marker.color=ColorRGBA(*[0.05, 1.0, 0.05, 1.0])
         else:
