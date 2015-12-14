@@ -20,7 +20,7 @@ CARTFRAME = "cart"
 
 # define initial config and velocity
 
-q0 = np.array([0.,np.pi-0.1]) # x = [yc,theta]
+q0 = np.array([np.pi-0.1,0.]) # x = [yc,theta]
 dq0 = np.array([0., 0.])
 
 # define time parameters:
@@ -29,20 +29,20 @@ tf = 15.0
 def build_system():
     sys = trep.System()
     frames = [
-        ty('yc',name=CARTFRAME, mass=M), [ 
+        ty('yc',name=CARTFRAME, mass=M,kinematic=True), [ 
             rx('theta', name="pendulumShoulder"), [
                 tz(L, name=MASSFRAME, mass=M)]]]
     sys.import_frames(frames)
     trep.potentials.Gravity(sys, (0,0,-g))
     trep.forces.Damping(sys, B)
-    trep.forces.ConfigForce(sys,'yc','cart-force')
+    #trep.forces.ConfigForce(sys,'yc','cart-force')
     return sys
 
 def proj_func(x):
-    x[1] = np.fmod(x[1]+np.pi, 2.0*np.pi)
-    if(x[1] < 0):
-        x[1] = x[1]+2.0*np.pi
-    x[1] = x[1] - np.pi
+    x[0] = np.fmod(x[0]+np.pi, 2.0*np.pi)
+    if(x[0] < 0):
+        x[0] = x[0]+2.0*np.pi
+    x[0] = x[0] - np.pi
 
 
 def build_sac_control(sys):
@@ -54,7 +54,7 @@ def build_sac_control(sys):
     sacsyst.usat = [[MAXSTEP, -MAXSTEP]]
     sacsyst.calc_tm = DT
     sacsyst.u2search = True
-    sacsyst.Q = np.diag([20,200,1,0]) # th, x, thd, xd
+    sacsyst.Q = np.diag([200,20,0,1]) # th, x, thd, xd
     sacsyst.P = np.diag([0,0,0,0])
     sacsyst.R = 0.3*np.identity(1)
     sacsyst.set_proj_func(proj_func)
@@ -100,7 +100,7 @@ trep.visual.visualize_3d([ trep.visual.VisualItem3D(system, T, Q) ])
 plt.plot(T,Q)
 
 plt.plot(T,u)
-plt.legend(['x','th','u'])
+plt.legend(['th','x','u'])
 #plt.axis([0,tf,-10,10])
 plt.show()    
 np.savetxt("x_py.csv", q, fmt="%9.6f", delimiter=",")

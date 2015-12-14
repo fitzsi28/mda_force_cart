@@ -62,7 +62,7 @@ M = 0.1 #kg
 L = 2.0 # m
 B = 0.01 # damping
 g = 9.81 #m/s^2
-SCALE = 1
+SCALE = 16
 Kp = 300.0/SCALE
 Kd = 50.0/SCALE
 Ks = 100.0/SCALE
@@ -80,29 +80,28 @@ NU = 1 #number of inputs in the system
 def build_system():
     sys = trep.System()
     frames = [
-        ty('yc',name=CARTFRAME, mass=M), [ 
+        ty('yc',name=CARTFRAME, mass=M,kinematic=True), [ 
             rx('theta', name="pendulumShoulder"), [
                 tz(L, name=MASSFRAME, mass=M)]]]
     sys.import_frames(frames)
     trep.potentials.Gravity(sys, (0,0,-g))
     trep.forces.Damping(sys, B)
-    trep.forces.ConfigForce(sys,'yc','cart-force')
+    #trep.forces.ConfigForce(sys,'yc','cart-force')
     return sys
 
-def force_func(qq,dqq,prev):#qq=[x,th], dqq=[dx,dth]
-    a=accel_approx(prev)
-    F=M*g*np.cos(qq[1])*np.sin(qq[1])-L*M*np.sin(qq[1])*dqq[1]**2 + (2*M-M*np.cos(qq[1])**2)*a-B*dqq[0]+B/L*dqq[1]*np.cos(qq[1])
-    return F
+
 
 def accel_approx(qq):#approximation of acceleration from last 3 positions
-    order3approx = (qq[0]-2*qq[1]+qq[2])/(DT**2)
-    return order3approx
+    order1approx = (qq[0]-2*qq[1]+qq[2])/(DT**2)
+    #order2approx = (2*qq[0]-5*qq[1]+4*qq[2]-qq[3])/(DT**2)
+    #order3approx = (35*qq[0]-104*qq[1]+114*qq[2]-56*qq[3]+11*qq[4])/(12*DT**2)
+    return order1approx
 
 def proj_func(x):
-    x[1] = np.fmod(x[1]+np.pi, 2.0*np.pi)
-    if(x[1] < 0):
-        x[1] = x[1]+2.0*np.pi
-    x[1] = x[1] - np.pi
+    x[0] = np.fmod(x[0]+np.pi, 2.0*np.pi)
+    if(x[0] < 0):
+        x[0] = x[0]+2.0*np.pi
+    x[0] = x[0] - np.pi
 
 
 def build_sac_control(sys):
@@ -114,7 +113,7 @@ def build_sac_control(sys):
     sacsyst.usat = [[MAXSTEP, -MAXSTEP]]
     sacsyst.calc_tm = DT
     sacsyst.u2search = True
-    sacsyst.Q = np.diag([20,200,1,0]) # x, th, thd, xd
+    sacsyst.Q = np.diag([200,20,0,1]) # th, x, thd, xd
     sacsyst.P = np.diag([0,0,0,0])
     sacsyst.R = 0.3*np.identity(1)
     sacsyst.set_proj_func(proj_func)
@@ -137,6 +136,7 @@ class PendSimulator:
         self.sacvel = 0.
         self.prevq = np.zeros(5)
         self.prevdq = np.zeros(20)
+        self.prevddq = np.zeros(12)
         self.wall=0.
         self.i = 0.
         self.n = 0.
@@ -237,7 +237,7 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(SIMFRAME,CONTFRAME))
             return
 
-        self.q0 = np.array([SCALE*position[1], np.pi])#X=[yc, th]
+        self.q0 = np.array([np.pi,SCALE*position[1]])#X=[th, yc]
         self.dq0 = np.zeros(self.system.nQd) 
         self.mvi.initialize_from_state(0, self.q0, self.dq0)
         self.sactrep.q = self.system.q
@@ -256,6 +256,7 @@ class PendSimulator:
         self.n = 0.
         self.prevq = np.zeros(5)
         self.prevdq = np.zeros(20)
+        self.prevdqq=np.zeros(12)
         return
 
     def timercb(self, data):
@@ -279,18 +280,20 @@ class PendSimulator:
         self.prevq = np.delete(self.prevq, -1)
         self.prevdq = np.insert(self.prevdq,0, self.system.dq[1])
         self.prevdq = np.delete(self.prevdq, -1)
+        self.prevddq = np.insert(self.prevddq,0, accel_approx(self.prevq))
+        self.prevddq = np.delete(self.prevddq, -1)
         
         # now we can use this position to integrate the trep simulation:
-        ucont = np.zeros(self.mvi.nu)
-        ucont[self.system.inputs.index(self.system.get_input('cart-force'))] = force_func(self.system.q,self.system.dq,self.prevq)
+        ucont = np.zeros(self.mvi.nk)
+        ucont[self.system.kin_configs.index(self.system.get_config('yc'))] = self.prevq[0]
         
         # step integrator:
         try:
-            self.mvi.step(self.mvi.t2 + DT,u1=ucont)
+            self.mvi.step(self.mvi.t2 + DT,k2=ucont)
         except trep.ConvergenceError as e:
             rospy.loginfo("Could not take step: %s"%e.message)
             return
-       
+        
         temp = trepsys()
         temp.sys_time = self.system.t
         temp.theta = self.system.q[1]
@@ -298,7 +301,9 @@ class PendSimulator:
         temp.dtheta = self.system.dq[1]
         temp.dy = self.system.dq[0] #np.average(self.prevdq)
         temp.sac = self.sacsys.controls[0]
-        temp.u = self.system.u[0]
+        temp.u = np.average(self.prevddq)
+        #print(round(temp.u,2))
+        #print(self.mvi.p1)
         self.trep_pub.publish(temp)
         
         
@@ -340,7 +345,7 @@ class PendSimulator:
         self.marker_pub.publish(self.markers)
         qtemp = self.system.q
         proj_func(qtemp)
-        if abs(qtemp[1]) < 0.15 and abs(self.system.dq[1]) < 0.5 or self.system.t >= 50.0:
+        if abs(qtemp[0]) < 0.15 and abs(self.system.dq[0]) < 0.5 or self.system.t >= 50.0:
             rospy.loginfo("Success Time: %s"%round(self.system.t,2))
             rospy.loginfo("Final Score: %s"%round((self.i/self.n*100),2))
             self.force_pub.publish(OmniFeedback(force=GM.Vector3(), position=GM.Vector3()))
@@ -383,7 +388,7 @@ class PendSimulator:
             return
         #get force magnitude
         fsac = np.array([0.,sat_func(np.average(self.prevdq)),0.])
-        if self.sacsys.controls[0]*self.system.u[0]>0:
+        if self.sacsys.controls[0]*np.average(self.prevddq)>0:
             self.i+=1
             self.sac_marker.color=ColorRGBA(*[0.05, 1.0, 0.05, 1.0])
         else:
