@@ -89,9 +89,14 @@ def build_system():
     trep.forces.ConfigForce(sys,'yc','cart-force')
     return sys
 
-def force_func(a,th,dth):
-    F=M*g*np.cos(th)*np.sin(th)-L*M*np.sin(th)*dth**2 + (2*M-M*np.cos(th)**2)*a
+def force_func(qq,dqq,prev):#qq=[x,th], dqq=[dx,dth]
+    a=accel_approx(prev)
+    F=M*g*np.cos(qq[1])*np.sin(qq[1])-L*M*np.sin(qq[1])*dqq[1]**2 + (2*M-M*np.cos(qq[1])**2)*a-B*dqq[0]+B/L*dqq[1]*np.cos(qq[1])
     return F
+
+def accel_approx(qq):#approximation of acceleration from last 3 positions
+    order3approx = (qq[0]-2*qq[1]+qq[2])/(DT**2)
+    return order3approx
 
 def proj_func(x):
     x[1] = np.fmod(x[1]+np.pi, 2.0*np.pi)
@@ -276,12 +281,12 @@ class PendSimulator:
         self.prevdq = np.delete(self.prevdq, -1)
         
         # now we can use this position to integrate the trep simulation:
-        ucont = np.zeros(self.mvi.nk)
-        ucont[self.system.kin_configs.index(self.system.get_config('yc'))] = self.prevq[0]
+        ucont = np.zeros(self.mvi.nu)
+        ucont[self.system.inputs.index(self.system.get_input('cart-force'))] = force_func(self.system.q,self.system.dq,self.prevq)
         
         # step integrator:
         try:
-            self.mvi.step(self.mvi.t2 + DT,k2=ucont)
+            self.mvi.step(self.mvi.t2 + DT,u1=ucont)
         except trep.ConvergenceError as e:
             rospy.loginfo("Could not take step: %s"%e.message)
             return
@@ -292,6 +297,7 @@ class PendSimulator:
         temp.dtheta = self.system.dq[1]
         temp.dy = self.system.dq[0] #np.average(self.prevdq)
         temp.sac = self.sacsys.controls[0]
+        temp.u = self.system.u[0]
         self.trep_pub.publish(temp)
         
         
@@ -376,19 +382,11 @@ class PendSimulator:
             return
         #get force magnitude
         fsac = np.array([0.,sat_func(np.average(self.prevdq)),0.])
-        if (self.sacvel > 0 and SCALE*position[1] < self.wall) or \
-           (self.sacvel < 0 and SCALE*position[1] > self.wall):
-            fsac = fsac+np.array([0.,Kp*(self.wall-SCALE*position[1]) \
-                             +Kd*(self.prevq[1]-self.prevq[0]),0.])
-            self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.0])
-        elif abs(SCALE*position[1] - self.prevq[1]) < SCALE*10**(-4) and self.sacvel == 0.0:
-            self.sac_marker.color = ColorRGBA(*[0.05, 0.05, 1.0, 1.0])
-            #self.i += 1
-        elif abs(SCALE*position[1] - self.prevq[1]) < SCALE*10**(-4):
-            self.sac_marker.color = ColorRGBA(*[0.05, 0.05, 1.0, 0.0])
+        if self.sacsys.control[0]*self.system.u[0]>0:
+            self.i+=1
+            self.sac_marker.color=ColorRGBA(*[0.05, 1.0, 0.05, 1.0])
         else:
-            self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0]) 
-            self.i += 1 
+            self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.0])
         self.n += 1
         self.score_marker.text = "Score = "+ str(round((self.i/self.n)*100,2))+"%"
         # the following transform was figured out only through
@@ -397,7 +395,7 @@ class PendSimulator:
         fvec = np.array([fsac[1], fsac[2], fsac[0]])
         f = GM.Vector3(*fvec)
         p = GM.Vector3(*position)
-        self.force_pub.publish(OmniFeedback(force=f, position=p))
+        #self.force_pub.publish(OmniFeedback(force=f, position=p))
         return
            
     def buttoncb(self, data):

@@ -6,8 +6,9 @@ L = 2.0 # m
 B = 0.01 # damping
 g = 9.81 #m/s^2
 
-def force_func(a,th,dth):
-    F=M*g*np.cos(th)*np.sin(th)-L*M*np.sin(th)*dth**2 + (2*M-M*np.cos(th)**2)*a
+def force_func(qq,dqq):#qq=[x,th], dqq=[dx,dth]
+    a=accel_approx(qq)
+    F=M*g*np.cos(qq[1])*np.sin(qq[1])-L*M*np.sin(qq[1])*dqq[1]**2 + (2*M-M*np.cos(qq[1])**2)*a-B*dqq[0]+B/L*dqq[1]*np.cos(qq[1])
     return F
 
 def accel_approx(qq):#approximation of acceleration from last 3 positions
