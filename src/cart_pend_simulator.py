@@ -54,7 +54,7 @@ import time
 ####################
 # GLOBAL CONSTANTS #
 ####################
-
+TF = 50.0
 DT = 1./60.
 TS = 1./5.
 DT2 = 1./300.
@@ -93,8 +93,6 @@ def build_system():
 
 def accel_approx(qq):#approximation of acceleration from last 3 positions
     order1approx = (qq[0]-2*qq[1]+qq[2])/(DT**2)
-    #order2approx = (2*qq[0]-5*qq[1]+4*qq[2]-qq[3])/(DT**2)
-    #order3approx = (35*qq[0]-104*qq[1]+114*qq[2]-56*qq[3]+11*qq[4])/(12*DT**2)
     return order1approx
 
 def proj_func(x):
@@ -104,20 +102,30 @@ def proj_func(x):
     x[0] = x[0] - np.pi
 
 
-def build_sac_control(sys):
-    sacsyst = sactrep.Sac(sys)
-    sacsyst.T = 1.2
-    sacsyst.lam = -5
-    sacsyst.maxdt = 0.2
-    sacsyst.ts = TS#DT
-    sacsyst.usat = [[MAXSTEP, -MAXSTEP]]
-    sacsyst.calc_tm = DT
-    sacsyst.u2search = True
-    sacsyst.Q = np.diag([200,20,0,1]) # th, x, thd, xd
-    sacsyst.P = np.diag([0,0,0,0])
-    sacsyst.R = 0.3*np.identity(1)
-    sacsyst.set_proj_func(proj_func)
-    return sacsyst
+def build_LQR(mvisys,sys):
+    qBar = np.array([0., 0.0]) # Desired configuration
+    Q = np.diag([200,20,0,1]) # Cost weights for states
+    R = 0.3*np.eye(1) # Cost weights for inputs
+    
+    # Create discrete system
+    TVec = np.arange(0, TF+DT, DT) # Initialize discrete time vector
+    dsystem = trep.discopt.DSystem(mvisys, TVec) # Initialize discrete system
+    xB = dsystem.build_state(Q=qBar,p = np.zeros(sys.nQd)) # Create desired state configuration
+
+    # Design linear feedback controller
+    Qd = np.zeros((len(TVec), dsystem.system.nQ)) # Initialize desired configuration trajectory
+    thetaIndex = dsystem.system.get_config('theta').index # Find index of theta config variable
+    ycIndex = dsystem.system.get_config('yc').index
+    for i,t in enumerate(TVec):
+        Qd[i, thetaIndex] = qBar[0] # Set desired configuration trajectory
+        Qd[i, ycIndex] = qBar[1]
+        (Xd, Ud) = dsystem.build_trajectory(Qd) # Set desired state and input trajectory
+
+    Qk = lambda k: Q # Create lambda function for state cost weights
+    Rk = lambda k: R # Create lambda function for input cost weights
+    KVec = dsystem.calc_feedback_controller(Xd, Ud, Qk, Rk) # Solve for linear feedback controller gain
+    KStabil = KVec[0] # Use only use first value to approximate infinite-horizon optimal controller gain
+    return (KStabil, dsystem,xB)
 
 def sat_func(v):
     f = -15./(1.+np.exp(-1.0*(v-MAXVEL))) + 15./(1.+np.exp(1.0*(v+MAXVEL)))
@@ -136,7 +144,6 @@ class PendSimulator:
         self.sacvel = 0.
         self.prevq = np.zeros(5)
         self.prevdq = np.zeros(20)
-        self.prevddq = np.zeros(12)
         self.wall=0.
         self.i = 0.
         self.n = 0.
@@ -147,7 +154,7 @@ class PendSimulator:
         # setup publishers, subscribers, timers:
         self.button_sub = rospy.Subscriber("omni1_button", PhantomButtonEvent, self.buttoncb)
         self.sim_timer = rospy.Timer(rospy.Duration(DT), self.timercb)
-        self.sac_timer = rospy.Timer(rospy.Duration(TS), self.timersac)
+        self.LQ_timer = rospy.Timer(rospy.Duration(TS), self.timerLQ)
         self.force_timer = rospy.Timer(rospy.Duration(DT2),self.render_forces)
         self.mass_pub = rospy.Publisher("mass_point", PointStamped, queue_size = 3)
         self.cart_pub = rospy.Publisher("cart_point", PointStamped, queue_size = 3)
@@ -220,8 +227,8 @@ class PendSimulator:
     def setup_integrator(self):
         self.system = build_system()
         self.sactrep = build_system()
-        self.sacsys = build_sac_control(self.sactrep)
         self.mvi = trep.MidpointVI(self.system)
+        [self.KStabil, self.dsys, self.xBar]=build_LQR(mvi, system)
                             
         # get the position of the omni in the trep frame
         if self.listener.frameExists(SIMFRAME) and self.listener.frameExists(CONTFRAME):
@@ -237,7 +244,7 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(SIMFRAME,CONTFRAME))
             return
 
-        self.q0 = np.array([np.pi,SCALE*position[1]])#X=[th, yc]
+        self.q0 = np.array([np.pi, SCALE*position[1]])#X=[th,yc]
         self.dq0 = np.zeros(self.system.nQd) 
         self.mvi.initialize_from_state(0, self.q0, self.dq0)
         self.sactrep.q = self.system.q
@@ -248,15 +255,14 @@ class PendSimulator:
         self.t_app = self.sacsys.t_app[1]-self.sacsys.t_app[0]
         
         #convert kinematic acceleration to new velocity&position
-        self.sacvel = self.system.dq[0]+self.sacsys.controls[0]*self.t_app
-        self.sacpos = self.system.q[0] + 0.5*(self.sacvel+self.system.dq[0])*self.t_app        
+        self.sacvel = self.system.dq[1]+self.sacsys.controls[0]*self.t_app
+        self.sacpos = self.system.q[1] + 0.5*(self.sacvel+self.system.dq[1])*self.t_app        
         self.wall = SCALE*position[1]
         #reset score values
         self.i = 0.
         self.n = 0.
         self.prevq = np.zeros(5)
         self.prevdq = np.zeros(20)
-        self.prevdqq=np.zeros(12)
         return
 
     def timercb(self, data):
@@ -280,8 +286,6 @@ class PendSimulator:
         self.prevq = np.delete(self.prevq, -1)
         self.prevdq = np.insert(self.prevdq,0, self.system.dq[1])
         self.prevdq = np.delete(self.prevdq, -1)
-        self.prevddq = np.insert(self.prevddq,0, accel_approx(self.prevq))
-        self.prevddq = np.delete(self.prevddq, -1)
         
         # now we can use this position to integrate the trep simulation:
         ucont = np.zeros(self.mvi.nk)
@@ -293,17 +297,13 @@ class PendSimulator:
         except trep.ConvergenceError as e:
             rospy.loginfo("Could not take step: %s"%e.message)
             return
-        
         temp = trepsys()
         temp.sys_time = self.system.t
-        temp.theta = self.system.q[1]
-        temp.y = self.system.q[0]
-        temp.dtheta = self.system.dq[1]
-        temp.dy = self.system.dq[0] #np.average(self.prevdq)
+        temp.theta = self.system.q[0]
+        temp.y = self.system.q[1]
+        temp.dtheta = self.system.dq[0]
+        temp.dy = self.system.dq[1] #np.average(self.prevdq)
         temp.sac = self.sacsys.controls[0]
-        temp.u = np.average(self.prevddq)
-        #print(round(temp.u,2))
-        #print(self.mvi.p1)
         self.trep_pub.publish(temp)
         
         
@@ -363,8 +363,8 @@ class PendSimulator:
         self.t_app = self.sacsys.t_app[1]-self.sacsys.t_app[0]
         
         #convert kinematic acceleration to new velocity&position
-        veltemp = self.system.dq[0]+self.sacsys.controls[0]*self.t_app
-        self.sacpos = self.system.q[0] +0.5*(self.sacvel+self.system.dq[0])*self.t_app
+        veltemp = self.system.dq[1]+self.sacsys.controls[0]*self.t_app
+        self.sacpos = self.system.q[1] +0.5*(self.sacvel+self.system.dq[1])*self.t_app
         if np.sign(self.sacvel) != np.sign(veltemp):#update wall if sac changes direction
             self.wall = self.prevq[0]
         self.sacvel = veltemp
@@ -388,11 +388,19 @@ class PendSimulator:
             return
         #get force magnitude
         fsac = np.array([0.,sat_func(np.average(self.prevdq)),0.])
-        if self.sacsys.controls[0]*np.average(self.prevddq)>0:
-            self.i+=1
-            self.sac_marker.color=ColorRGBA(*[0.05, 1.0, 0.05, 1.0])
-        else:
+        if (self.sacvel > 0 and SCALE*position[1] < self.wall) or \
+           (self.sacvel < 0 and SCALE*position[1] > self.wall):
+            fsac = fsac+np.array([0.,Kp*(self.wall-SCALE*position[1]) \
+                             +Kd*(self.prevq[1]-self.prevq[0]),0.])
             self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.0])
+        elif abs(SCALE*position[1] - self.prevq[1]) < SCALE*10**(-4) and self.sacvel == 0.0:
+            self.sac_marker.color = ColorRGBA(*[0.05, 0.05, 1.0, 1.0])
+            #self.i += 1
+        elif abs(SCALE*position[1] - self.prevq[1]) < SCALE*10**(-4):
+            self.sac_marker.color = ColorRGBA(*[0.05, 0.05, 1.0, 0.0])
+        else:
+            self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0]) 
+            self.i += 1 
         self.n += 1
         self.score_marker.text = "Score = "+ str(round((self.i/self.n)*100,2))+"%"
         # the following transform was figured out only through
@@ -401,7 +409,7 @@ class PendSimulator:
         fvec = np.array([fsac[1], fsac[2], fsac[0]])
         f = GM.Vector3(*fvec)
         p = GM.Vector3(*position)
-        #self.force_pub.publish(OmniFeedback(force=f, position=p))
+        self.force_pub.publish(OmniFeedback(force=f, position=p))
         return
            
     def buttoncb(self, data):
