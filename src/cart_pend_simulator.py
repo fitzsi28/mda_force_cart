@@ -45,8 +45,9 @@ import visualization_msgs.msg as VM
 ###################
 import trep
 from trep import tx, ty, tz, rx, ry, rz
-import sactrep
+import trep.discopt#sactrep
 import numpy as np
+from numpy import dot
 import copy
 import time
 
@@ -77,6 +78,7 @@ SACFRAME = "SAC"
 NQ = 2 #number of configuration variables in the system
 NU = 1 #number of inputs in the system
 
+
 def build_system():
     sys = trep.System()
     frames = [
@@ -102,34 +104,39 @@ def proj_func(x):
     x[0] = x[0] - np.pi
 
 
-def build_LQR(mvisys,sys):
-    qBar = np.array([0., 0.0]) # Desired configuration
-    Q = np.diag([200,20,0,1]) # Cost weights for states
-    R = 0.3*np.eye(1) # Cost weights for inputs
-    
+def build_LQR(mvisys, sys, X0):
+    qBar = np.array([0., 0.0]) 
+    Q = np.diag([200,20,0,1]) 
+    R = 0.3*np.eye(1) 
     # Create discrete system
-    TVec = np.arange(0, TF+DT, DT) # Initialize discrete time vector
-    dsystem = trep.discopt.DSystem(mvisys, TVec) # Initialize discrete system
-    xB = dsystem.build_state(Q=qBar,p = np.zeros(sys.nQd)) # Create desired state configuration
-
+    TVec = np.arange(0, TF+DT, DT)
+    dsystem = trep.discopt.DSystem(mvisys, TVec)
+    xB = dsystem.build_state(Q=qBar,p = np.zeros(sys.nQd)) 
     # Design linear feedback controller
-    Qd = np.zeros((len(TVec), dsystem.system.nQ)) # Initialize desired configuration trajectory
-    thetaIndex = dsystem.system.get_config('theta').index # Find index of theta config variable
+    Qd = np.zeros((len(TVec), dsystem.system.nQ)) 
+    thetaIndex = dsystem.system.get_config('theta').index 
     ycIndex = dsystem.system.get_config('yc').index
     for i,t in enumerate(TVec):
-        Qd[i, thetaIndex] = qBar[0] # Set desired configuration trajectory
+        Qd[i, thetaIndex] = qBar[0] 
         Qd[i, ycIndex] = qBar[1]
-        (Xd, Ud) = dsystem.build_trajectory(Qd) # Set desired state and input trajectory
-
-    Qk = lambda k: Q # Create lambda function for state cost weights
-    Rk = lambda k: R # Create lambda function for input cost weights
-    KVec = dsystem.calc_feedback_controller(Xd, Ud, Qk, Rk) # Solve for linear feedback controller gain
-    KStabil = KVec[0] # Use only use first value to approximate infinite-horizon optimal controller gain
+        (Xd, Ud) = dsystem.build_trajectory(Qd) 
+    Qk = lambda k: Q 
+    Rk = lambda k: R 
+    KVec = dsystem.calc_feedback_controller(Xd, Ud, Qk, Rk) 
+    KStabil = KVec[0] #use first value to approx infinite horzion controller gain
+    dsystem.set(X0, np.array([0.]), 0)
     return (KStabil, dsystem,xB)
 
 def sat_func(v):
     f = -15./(1.+np.exp(-1.0*(v-MAXVEL))) + 15./(1.+np.exp(1.0*(v+MAXVEL)))
     return f
+
+def sat_u(ustar):
+    if ustar>MAXSTEP: 
+        ustar=MAXSTEP
+    elif ustar<-MAXSTEP:
+        ustar=-MAXSTEP
+    return ustar
 
 class PendSimulator:
 
@@ -228,7 +235,7 @@ class PendSimulator:
         self.system = build_system()
         self.sactrep = build_system()
         self.mvi = trep.MidpointVI(self.system)
-        [self.KStabil, self.dsys, self.xBar]=build_LQR(mvi, system)
+        #[self.KStabil, self.dsys, self.xBar]=build_LQR(self.mvi, self.system)
                             
         # get the position of the omni in the trep frame
         if self.listener.frameExists(SIMFRAME) and self.listener.frameExists(CONTFRAME):
@@ -244,19 +251,24 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(SIMFRAME,CONTFRAME))
             return
 
-        self.q0 = np.array([np.pi, SCALE*position[1]])#X=[th,yc]
+        self.q0 = np.array([0.1, SCALE*position[1]])#X=[th,yc]
         self.dq0 = np.zeros(self.system.nQd) 
+        x0=np.array([self.q0[0],self.q0[1],0.,0.])
+        
+        [self.KStabil, self.dsys, self.xBar]=build_LQR(self.mvi, self.system, x0)
+        
         self.mvi.initialize_from_state(0, self.q0, self.dq0)
-        self.sactrep.q = self.system.q
-        self.sactrep.dq = self.system.dq
-        self.sacsys.init()
-        #compute the SAC control
-        self.sacsys.calc_u()
-        self.t_app = self.sacsys.t_app[1]-self.sacsys.t_app[0]
+        self.u=self.mvi.q1[1]
+        #compute LQR control
+        x=np.array([self.system.q[0],self.system.q[1],self.system.dq[0],self.system.dq[1]])
+        xTilde = x - self.xBar # Compare to desired state
+        utemp = -dot(self.KStabil, xTilde) # Calculate input
+        utemp = sat_func(utemp-self.u)
+        self.u=utemp+self.u
         
         #convert kinematic acceleration to new velocity&position
-        self.sacvel = self.system.dq[1]+self.sacsys.controls[0]*self.t_app
-        self.sacpos = self.system.q[1] + 0.5*(self.sacvel+self.system.dq[1])*self.t_app        
+        self.sacvel = utemp/DT
+        self.sacpos = self.u        
         self.wall = SCALE*position[1]
         #reset score values
         self.i = 0.
@@ -303,7 +315,7 @@ class PendSimulator:
         temp.y = self.system.q[1]
         temp.dtheta = self.system.dq[0]
         temp.dy = self.system.dq[1] #np.average(self.prevdq)
-        temp.sac = self.sacsys.controls[0]
+        temp.sac = self.u
         self.trep_pub.publish(temp)
         
         
@@ -345,7 +357,7 @@ class PendSimulator:
         self.marker_pub.publish(self.markers)
         qtemp = self.system.q
         proj_func(qtemp)
-        if abs(qtemp[0]) < 0.15 and abs(self.system.dq[0]) < 0.5 or self.system.t >= 50.0:
+        if self.system.t >= 50.0: #or abs(qtemp[0]) < 0.15 and abs(self.system.dq[0]) < 0.5: 
             rospy.loginfo("Success Time: %s"%round(self.system.t,2))
             rospy.loginfo("Final Score: %s"%round((self.i/self.n*100),2))
             self.force_pub.publish(OmniFeedback(force=GM.Vector3(), position=GM.Vector3()))
@@ -353,18 +365,19 @@ class PendSimulator:
         return
         
 
-    def timersac(self,data):
+    def timerLQ(self,data):
         if not self.running_flag:
             return
-        #compute the SAC control
-        self.sactrep.q = self.system.q
-        self.sactrep.dq = self.system.dq
-        self.sacsys.calc_u()
-        self.t_app = self.sacsys.t_app[1]-self.sacsys.t_app[0]
+        #compute LQR control
+        x=np.array([self.system.q[0],self.system.q[1],self.system.dq[0],self.system.dq[1]])
+        xTilde = x - self.xBar # Compare to desired state
+        utemp = -dot(self.KStabil, xTilde) # Calculate input
+        utemp = sat_func(utemp-self.u)
+        self.u=utemp+self.u
         
         #convert kinematic acceleration to new velocity&position
-        veltemp = self.system.dq[1]+self.sacsys.controls[0]*self.t_app
-        self.sacpos = self.system.q[1] +0.5*(self.sacvel+self.system.dq[1])*self.t_app
+        veltemp = utemp/DT
+        self.sacpos = self.u
         if np.sign(self.sacvel) != np.sign(veltemp):#update wall if sac changes direction
             self.wall = self.prevq[0]
         self.sacvel = veltemp
