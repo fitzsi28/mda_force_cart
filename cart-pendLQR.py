@@ -23,11 +23,11 @@ CARTFRAME = "cart"
 X0 = np.array([0.15,-0.5,-0.3,10.0])# Initial configuration of pendulum
 t0 = 0.0 # Initial time
 
-
+"""
 qBar = np.array([0., 0.0]) # Desired configuration
-Q = np.diag([200,20,0,1]) # Cost weights for states
+Q = np.diag([200,20,0,0]) # Cost weights for states
 R = 0.3*np.eye(1) # Cost weights for inputs
-
+"""
 def build_system():
     sys = trep.System()
     frames = [
@@ -61,7 +61,7 @@ mvi.initialize_from_configs(t0, X0[0:1], t0+DT, X0[0:1])
 
 def build_LQR(mvisys,sys):
     qBar = np.array([0., 0.0]) # Desired configuration
-    Q = np.diag([200,20,0,1]) # Cost weights for states
+    Q = np.diag([200,1,0,20]) # Cost weights for states
     R = 0.3*np.eye(1) # Cost weights for inputs
     
     # Create discrete system
@@ -110,7 +110,7 @@ while mvi.t1 < TF-DT:
     X.append(x)
     U.append(u)
     if np.abs(mvi.t1%1)<DT:
-        print "time = ",mvi.t1
+        print "time = ",mvi.q1
 
 # Visualize the system in action
 trep.visual.visualize_3d([ trep.visual.VisualItem3D(system, T, Q) ])

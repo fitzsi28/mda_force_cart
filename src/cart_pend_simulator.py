@@ -106,7 +106,7 @@ def proj_func(x):
 
 def build_LQR(mvisys, sys, X0):
     qBar = np.array([0., 0.0]) 
-    Q = np.diag([200,20,0,1]) 
+    Q = np.diag([200,0,0,0])  
     R = 0.3*np.eye(1) 
     # Create discrete system
     TVec = np.arange(0, TF+DT, DT)
@@ -129,7 +129,7 @@ def build_LQR(mvisys, sys, X0):
 
 def sat_func(v):
     f = -15./(1.+np.exp(-1.0*(v-MAXVEL))) + 15./(1.+np.exp(1.0*(v+MAXVEL)))
-    return f
+    return 0
 
 def sat_u(ustar):
     if ustar>MAXSTEP: 
@@ -165,6 +165,7 @@ class PendSimulator:
         self.force_timer = rospy.Timer(rospy.Duration(DT2),self.render_forces)
         self.mass_pub = rospy.Publisher("mass_point", PointStamped, queue_size = 3)
         self.cart_pub = rospy.Publisher("cart_point", PointStamped, queue_size = 3)
+        self.dir_pub = rospy.Publisher("sac_point", PointStamped, queue_size = 2)####arrow marker###
         self.trep_pub = rospy.Publisher("trep_sys", trepsys, queue_size = 3)
         self.marker_pub = rospy.Publisher("visualization_marker_array", VM.MarkerArray, queue_size = 3)
         self.force_pub = rospy.Publisher("omni1_force_feedback", OmniFeedback , queue_size = 3)
@@ -222,11 +223,21 @@ class PendSimulator:
         self.score_marker.text = "0%"
         self.score_marker.id = 4
         
+        #arrow marker
+        self.dir_marker = copy.deepcopy(self.mass_marker)
+        self.dir_marker.type = VM.Marker.ARROW
+        self.dir_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0])
+        self.dir_marker.lifetime = rospy.Duration(5*DT)
+        self.dir_marker.scale = GM.Vector3(*[0.025, 0.05, 0.025])
+        self.dir_marker.id = 5
+        
+        
         self.markers.markers.append(self.mass_marker)
         self.markers.markers.append(self.link_marker)
         self.markers.markers.append(self.cart_marker)
         self.markers.markers.append(self.sac_marker)
         self.markers.markers.append(self.score_marker)
+        self.markers.markers.append(self.dir_marker)###arrow###
 
         return
     
@@ -346,6 +357,23 @@ class PendSimulator:
         qtransc = TR.quaternion_from_matrix(gwc)
         self.br.sendTransform(ptransc, qtransc, pc.header.stamp, CARTFRAME, SIMFRAME)
         
+        ####for the arrow marker
+        pu = PointStamped()
+        pu.header.stamp = rospy.Time.now()
+        pu.header.frame_id = SIMFRAME
+        gwu = copy.copy(gwc)
+        gwu.itemset((1,3), self.sacpos)
+        ptransu = gwu[0:3, -1]
+        # print ptransc
+        pu.point.x = ptransu[0]
+        pu.point.y = ptransu[1]
+        pu.point.z = ptransu[2]
+        self.dir_pub.publish(pu)
+        # now we can send the transform:
+        qtransu = TR.quaternion_from_matrix(gwu)
+        self.br.sendTransform(ptransu, qtransu, pu.header.stamp, SACFRAME, SIMFRAME)
+        ####end arrow marker update
+        
         # now we can publish the markers:
         for m in self.markers.markers:
             m.header.stamp = p.header.stamp
@@ -353,6 +381,7 @@ class PendSimulator:
         p1 = GM.Point(*ptrans)
         p2 = GM.Point(*ptransc)
         self.link_marker.points = [p1, p2]
+        self.dir_marker.points = [GM.Point(*ptransc), GM.Point(*ptransu)] ######arrow marker######
         self.cart_marker.pose = GM.Pose(position=GM.Point(*ptransc))
         self.marker_pub.publish(self.markers)
         qtemp = self.system.q
@@ -379,7 +408,7 @@ class PendSimulator:
         veltemp = utemp/DT
         self.sacpos = self.u
         if np.sign(self.sacvel) != np.sign(veltemp):#update wall if sac changes direction
-            self.wall = self.prevq[0]
+            self.wall = 0.#self.prevq[0]
         self.sacvel = veltemp
         return
     
