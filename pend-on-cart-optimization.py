@@ -52,13 +52,13 @@ def build_system(torque_force=False):
 
     system = trep.System()
     frames = [
-        tx('x', name='Cart', mass=cart_mass), [
+        tx('x', name='Cart', kinematic = True), [
             rz('theta', name="PendulumBase"), [
                 ty(-pendulum_length, name="Pendulum", mass=pendulum_mass)]]]
     system.import_frames(frames)
     trep.potentials.Gravity(system, (0, -9.8, 0))
     trep.forces.Damping(system, 0.01)
-    trep.forces.ConfigForce(system, 'x', 'x-force')
+    #trep.forces.ConfigForce(system, 'x', 'x-force')
     if torque_force:
         trep.forces.ConfigForce(system, 'theta', 'theta-force')
     return system
@@ -81,7 +81,7 @@ def make_input_cost(dsys, base, x, theta=None):
     weight = base*np.ones((dsys.nU,))
     if theta is not None:
         weight[system.get_input('theta-force').index] = theta
-    weight[system.get_input('x-force').index] = x
+    weight[system.get_config('x').index] = x
     return np.diag(weight)                    
 
 
@@ -89,7 +89,7 @@ def make_input_cost(dsys, base, x, theta=None):
 # Build cart system with torque input on pendulum.
 system = build_system(True)
 mvi = trep.MidpointVI(system)
-t = np.arange(0.0, 1./5., 0.01)
+t = np.arange(0.0, 5.0, 0.01)
 dsys_a = discopt.DSystem(mvi, t)#can this take short time intervals like 1/5? yes!
 
 
@@ -108,7 +108,7 @@ qd = generate_desired_trajectory(system, t, 130*mpi/180)#will have to rerun at e
 (Xd, Ud) = dsys_a.build_trajectory(qd)
 Qcost = make_state_cost(dsys_a, 0.01, 0.01, 100.0)
 Rcost = make_input_cost(dsys_a, 0.01, 0.01, 0.01)
-cost = discopt.DCost(Xd, Ud, Qcost, Rcost) # set the cost function*****
+cost = discopt.DCost(Xd, Ud, Qcost, Rcost) # set the cost function***** how to make terminal cost 0??
 
 optimizer = discopt.DOptimizer(dsys_a, cost)#printing default monitoring information
 
@@ -120,7 +120,7 @@ finished, X, U = optimizer.optimize(X, U, max_steps=40)
 cost.R = make_input_cost(dsys_a, 0.01, 0.01, 100.0)
 optimizer.first_method_iterations = 4
 finished, X, U = optimizer.optimize(X, U, max_steps=40)
-
+"""
 # We could print a converge plot here if we wanted to.
 ## dcost = np.array(optimizer.monitor.dcost_history.items()).T
 ## import pylab
@@ -166,11 +166,11 @@ optimizer = discopt.DOptimizer(dsys_b, cost)
 optimizer.first_method_iterations = 4
 finished, X, U = optimizer.optimize(X, U, max_steps=40)
 
-
+"""
 
 if '--novisual' not in sys.argv:
 
-    q,p,v,u,rho = dsys_b.split_trajectory(X, U)
+    q,p,v,u,rho = dsys_a.split_trajectory(X, U)
 
     if False:
         view = Viewer(system, t, q, qd)
@@ -178,5 +178,5 @@ if '--novisual' not in sys.argv:
     else:
         visual.visualize_2d([
             PendCartVisual(system, t, qd),
-            PendCartVisual(system, t, q, draw_track=False)
+            PendCartVisual(system, t, q, draw_track=True)
             ])
