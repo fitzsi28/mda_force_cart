@@ -17,7 +17,7 @@ CONTFRAME = "stylus"
 SIMFRAME = "trep_world"
 MASSFRAME = "pend_mass"
 CARTFRAME = "cart"
-
+nU=2
 # define initial config and velocity
 
 q0 = np.array([np.pi-0.1,0.]) # x = [yc,theta]
@@ -35,6 +35,7 @@ def build_system():
     sys.import_frames(frames)
     trep.potentials.Gravity(sys, (0,0,-g))
     trep.forces.Damping(sys, B)
+    trep.forces.ConfigForce(sys, 'theta', 'theta-force')
     #trep.forces.ConfigForce(sys,'yc','cart-force')
     return sys
 
@@ -51,12 +52,12 @@ def build_sac_control(sys):
     sacsyst.lam = -5
     sacsyst.maxdt = 0.2
     sacsyst.ts = DT
-    sacsyst.usat = [[MAXSTEP, -MAXSTEP]]
+    sacsyst.usat = [[MAXSTEP, -MAXSTEP],[0.1,-0.1]]
     sacsyst.calc_tm = DT
     sacsyst.u2search = True
     sacsyst.Q = np.diag([200,20,0,1]) # th, x, thd, xd
     sacsyst.P = np.diag([0,0,0,0])
-    sacsyst.R = 0.3*np.identity(1)
+    sacsyst.R = 0.3*np.identity(system.nu+system.nQk)
     sacsyst.set_proj_func(proj_func)
     return sacsyst
 
@@ -85,7 +86,7 @@ while sacsys.time < tf:
     xcalc = system.q[0]+(system.dq[0]*t_app) + (0.5*sacsys.controls[0]*t_app*t_app)
     q = np.vstack((q, np.hstack((system.q[0], system.q[1],
                                  system.dq[0], system.dq[1]))))
-    u.append(sacsys.controls[0])
+    u.append(sacsys.controls[1])
     T.append(sacsys.time)
     qtemp = system.q
     proj_func(qtemp)
