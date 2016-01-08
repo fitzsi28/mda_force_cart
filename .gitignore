@@ -3,3 +3,5 @@
 
 #temporary files
 *~
+#compiled module files
+*.pyc

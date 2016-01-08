@@ -29,7 +29,7 @@ class PendCartVisual(visual.VisualItem2D):
         self.attachDrawing('Pendulum', self.paint_mass)
 
     def paint_track(self, painter):
-        rect = QRectF(0, 0, 4.0, 0.05)
+        rect = QRectF(0., 0., 4.0, 0.05)
         rect.moveCenter(QPointF(0,0))
         painter.fillRect(rect, QColor(100, 100, 100))
 
@@ -55,11 +55,11 @@ def build_system(torque_force=False):
 
     system = trep.System()
     frames = [
-        tx('x', name='Cart', kinematic = True), [
-            rz('theta', name="PendulumBase"), [
-                ty(-pendulum_length, name="Pendulum", mass=pendulum_mass)]]]
+        ty('x', name='Cart', kinematic = True), [
+            rx('theta', name="PendulumBase"), [
+                tz(-pendulum_length, name="Pendulum", mass=pendulum_mass)]]]
     system.import_frames(frames)
-    trep.potentials.Gravity(system, (0, -9.8, 0))
+    trep.potentials.Gravity(system, (0, 0,-9.8))
     trep.forces.Damping(system, 0.01)
     #trep.forces.ConfigForce(system, 'x', 'x-force')
     if torque_force:

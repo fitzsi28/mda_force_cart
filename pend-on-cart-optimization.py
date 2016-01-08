@@ -106,11 +106,13 @@ if '--novisual' not in sys.argv:
         view = Viewer(system, t, q, qd)
         view.main()
     else:
+        trep.visual.visualize_3d([ trep.visual.VisualItem3D(system, t, q) ])
+        """
         visual.visualize_2d([
             to.PendCartVisual(system, t, qd),
             to.PendCartVisual(system, t, q, draw_track=True)
             ])
-
+        """
 f,ax = plt.subplots(2, sharex=True)
 #ax[0].plot(t[1::],u.T[0])
 ax[0].plot(t[1::],rho.T[0])

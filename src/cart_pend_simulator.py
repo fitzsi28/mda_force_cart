@@ -44,99 +44,16 @@ import visualization_msgs.msg as VM
 # NON-ROS IMPORTS #
 ###################
 import trep
-from trep import tx, ty, tz, rx, ry, rz
-import trep.discopt#sactrep
+#from trep import tx, ty, tz, rx, ry, rz
+#import trep.discopt#sactrep
 import numpy as np
 from numpy import dot
 import copy
 import time
-
-
-####################
-# GLOBAL CONSTANTS #
-####################
-TF = 50.0
-DT = 1./60.
-TS = 1./5.
-DT2 = 1./300.
-M = 0.1 #kg
-L = 2.0 # m
-B = 0.01 # damping
-g = 9.81 #m/s^2
-SCALE = 16
-Kp = 300.0/SCALE
-Kd = 50.0/SCALE
-Ks = 100.0/SCALE
-MAXSTEP = 20. #m/s^2
-MAXVEL = 7.0#m/s
-BASEFRAME = "base"
-CONTFRAME = "stylus"
-SIMFRAME = "trep_world"
-MASSFRAME = "pend_mass"
-CARTFRAME = "cart"
-SACFRAME = "SAC"
-NQ = 2 #number of configuration variables in the system
-NU = 1 #number of inputs in the system
-
-
-def build_system():
-    sys = trep.System()
-    frames = [
-        ty('yc',name=CARTFRAME, mass=M,kinematic=True), [ 
-            rx('theta', name="pendulumShoulder"), [
-                tz(L, name=MASSFRAME, mass=M)]]]
-    sys.import_frames(frames)
-    trep.potentials.Gravity(sys, (0,0,-g))
-    trep.forces.Damping(sys, B)
-    #trep.forces.ConfigForce(sys,'yc','cart-force')
-    return sys
-
-
-
-def accel_approx(qq):#approximation of acceleration from last 3 positions
-    order1approx = (qq[0]-2*qq[1]+qq[2])/(DT**2)
-    return order1approx
-
-def proj_func(x):
-    x[0] = np.fmod(x[0]+np.pi, 2.0*np.pi)
-    if(x[0] < 0):
-        x[0] = x[0]+2.0*np.pi
-    x[0] = x[0] - np.pi
-
-
-def build_LQR(mvisys, sys, X0):
-    qBar = np.array([0., 0.0]) 
-    Q = np.diag([200,0,0,0])  
-    R = 0.3*np.eye(1) 
-    # Create discrete system
-    TVec = np.arange(0, TF+DT, DT)
-    dsystem = trep.discopt.DSystem(mvisys, TVec)
-    xB = dsystem.build_state(Q=qBar,p = np.zeros(sys.nQd)) 
-    # Design linear feedback controller
-    Qd = np.zeros((len(TVec), dsystem.system.nQ)) 
-    thetaIndex = dsystem.system.get_config('theta').index 
-    ycIndex = dsystem.system.get_config('yc').index
-    for i,t in enumerate(TVec):
-        Qd[i, thetaIndex] = qBar[0] 
-        Qd[i, ycIndex] = qBar[1]
-        (Xd, Ud) = dsystem.build_trajectory(Qd) 
-    Qk = lambda k: Q 
-    Rk = lambda k: R 
-    KVec = dsystem.calc_feedback_controller(Xd, Ud, Qk, Rk) 
-    KStabil = KVec[0] #use first value to approx infinite horzion controller gain
-    dsystem.set(X0, np.array([0.]), 0)
-    return (KStabil, dsystem,xB)
-
-def sat_func(v):
-    f = -15./(1.+np.exp(-1.0*(v-MAXVEL))) + 15./(1.+np.exp(1.0*(v+MAXVEL)))
-    return 0
-
-def sat_u(ustar):
-    if ustar>MAXSTEP: 
-        ustar=MAXSTEP
-    elif ustar<-MAXSTEP:
-        ustar=-MAXSTEP
-    return ustar
+import max_demon as mda
+from max_demon.constants import *
+import max_demon.force_fb as fb
+from max_demon import rvizmarks
 
 class PendSimulator:
 
@@ -176,62 +93,8 @@ class PendSimulator:
 
     def setup_markers(self):
         self.markers = VM.MarkerArray()
-        # mass marker
-        self.mass_marker = VM.Marker()
-        self.mass_marker.action = VM.Marker.ADD
-        self.mass_marker.color = ColorRGBA(*[1.0, 1.0, 1.0, 1.0])
-        self.mass_marker.header.frame_id = rospy.get_namespace() + SIMFRAME 
-        self.mass_marker.lifetime = rospy.Duration(4*DT)
-        self.mass_marker.scale = GM.Vector3(*[0.2, 0.2, 0.2])
-        self.mass_marker.type = VM.Marker.SPHERE
-        self.mass_marker.id = 0
-        # link marker
-        self.link_marker = copy.deepcopy(self.mass_marker)
-        self.link_marker.type = VM.Marker.LINE_STRIP
-        self.link_marker.color = ColorRGBA(*[0.1, 0.1, 1.0, 1.0])
-        self.link_marker.scale = GM.Vector3(*[0.05, 0.2, 0.2])
-        self.link_marker.id = 1
-        #cart marker
-        self.cart_marker = copy.deepcopy(self.mass_marker)
-        self.cart_marker.type = VM.Marker.CUBE
-        self.cart_marker.color = ColorRGBA(*[0.1, 0.5, 1.0, 0.9])
-        self.cart_marker.scale = GM.Vector3(*[0.2, 0.2, 0.2])
-        self.cart_marker.id = 2
-        #sac marker
-        self.sac_marker = copy.deepcopy(self.cart_marker)
-        self.sac_marker.type = VM.Marker.LINE_STRIP
-        self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0])
-        self.sac_marker.lifetime = rospy.Duration(DT)
-        self.sac_marker.scale = GM.Vector3(*[0.1, 0.15, 0.1])
-        p1 = np.array([0.0,0.0,0.1])
-        p2 = np.array([0.0,0.3,0.65])
-        p3 = np.array([0.0,-0.25,0.4])
-        self.sac_marker.points = [GM.Point(*p3), GM.Point(*p1), GM.Point(*p2)]
-        self.sac_marker.id = 3
-        # score marker
-        self.score_marker = copy.deepcopy(self.mass_marker)
-        self.score_marker.type = VM.Marker.TEXT_VIEW_FACING
-        self.score_marker.color = ColorRGBA(*[1.0, 1.0, 1.0, 1.0])
-        self.score_marker.scale = GM.Vector3(*[0.3, 0.3, 0.3])
-        self.score_marker.pose.position.x = 0;
-        self.score_marker.pose.position.y = 0;
-        self.score_marker.pose.position.z = 1.0;
-        self.score_marker.pose.orientation.x = 0.0;
-        self.score_marker.pose.orientation.y = 0.0;
-        self.score_marker.pose.orientation.z = 0.2;
-        self.score_marker.pose.orientation.w = 1.0;
-        self.score_marker.text = "0%"
-        self.score_marker.id = 4
-        
-        #arrow marker
-        self.dir_marker = copy.deepcopy(self.mass_marker)
-        self.dir_marker.type = VM.Marker.ARROW
-        self.dir_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0])
-        self.dir_marker.lifetime = rospy.Duration(5*DT)
-        self.dir_marker.scale = GM.Vector3(*[0.025, 0.05, 0.025])
-        self.dir_marker.id = 5
-        
-        
+        [self.mass_marker, self.link_marker, self.cart_marker, self.sac_marker,self.score_marker, self.dir_marker]=rvizmarks.setup_marks()
+              
         self.markers.markers.append(self.mass_marker)
         self.markers.markers.append(self.link_marker)
         self.markers.markers.append(self.cart_marker)
@@ -243,8 +106,8 @@ class PendSimulator:
     
         
     def setup_integrator(self):
-        self.system = build_system()
-        self.sactrep = build_system()
+        self.system = mda.build_system()
+        self.sactrep = mda.build_system()
         self.mvi = trep.MidpointVI(self.system)
         #[self.KStabil, self.dsys, self.xBar]=build_LQR(self.mvi, self.system)
                             
@@ -266,7 +129,7 @@ class PendSimulator:
         self.dq0 = np.zeros(self.system.nQd) 
         x0=np.array([self.q0[0],self.q0[1],0.,0.])
         
-        [self.KStabil, self.dsys, self.xBar]=build_LQR(self.mvi, self.system, x0)
+        [self.KStabil, self.dsys, self.xBar]=mda.build_LQR(self.mvi, self.system, x0)
         
         self.mvi.initialize_from_state(0, self.q0, self.dq0)
         self.u=self.mvi.q1[1]
@@ -274,7 +137,7 @@ class PendSimulator:
         x=np.array([self.system.q[0],self.system.q[1],self.system.dq[0],self.system.dq[1]])
         xTilde = x - self.xBar # Compare to desired state
         utemp = -dot(self.KStabil, xTilde) # Calculate input
-        utemp = sat_func(utemp-self.u)
+        utemp = fb.sat_func(utemp-self.u)
         self.u=utemp+self.u
         
         #convert kinematic acceleration to new velocity&position
@@ -330,45 +193,25 @@ class PendSimulator:
         self.trep_pub.publish(temp)
         
         
-        # if we successfully integrated, let's publish the point and the tf
-        p = PointStamped()
-        p.header.stamp = rospy.Time.now()
-        p.header.frame_id = SIMFRAME
-        # get transform from trep world to mass frame:
+        
         gwm = self.system.get_frame(MASSFRAME).g()
-        ptrans = gwm[0:3, -1]
-        p.point.x = ptrans[0]
-        p.point.y = ptrans[1]
-        p.point.z = ptrans[2]
+        [p,ptrans]=rvizmarks.pub_point(gwm)
         self.mass_pub.publish(p)
         # now we can send the transform:
         qtrans = TR.quaternion_from_matrix(gwm)
         self.br.sendTransform(ptrans, qtrans, p.header.stamp, MASSFRAME, SIMFRAME)
         ##cart sim   
-        pc = PointStamped()
-        pc.header.stamp = rospy.Time.now()
-        pc.header.frame_id = SIMFRAME
         gwc = self.system.get_frame(CARTFRAME).g()
-        ptransc = gwc[0:3, -1]
-        pc.point.x = ptransc[0]
-        pc.point.y = ptransc[1]
-        pc.point.z = ptransc[2]
+        [pc,ptransc]=rvizmarks.pub_point(gwc)
         self.cart_pub.publish(pc)
         qtransc = TR.quaternion_from_matrix(gwc)
         self.br.sendTransform(ptransc, qtransc, pc.header.stamp, CARTFRAME, SIMFRAME)
         
         ####for the arrow marker
-        pu = PointStamped()
-        pu.header.stamp = rospy.Time.now()
-        pu.header.frame_id = SIMFRAME
-        gwu = copy.copy(gwc)
-        gwu.itemset((1,3), self.sacpos)
-        ptransu = gwu[0:3, -1]
-        # print ptransc
-        pu.point.x = ptransu[0]
-        pu.point.y = ptransu[1]
-        pu.point.z = ptransu[2]
-        self.dir_pub.publish(pu)
+        gwu = copy.copy(gwc)###keep
+        gwu.itemset((1,3), self.sacpos)###keep
+        [pu,ptransu]=rvizmarks.pub_point(gwu)
+        self.dir_pub.publish(pu)###keep
         # now we can send the transform:
         qtransu = TR.quaternion_from_matrix(gwu)
         self.br.sendTransform(ptransu, qtransu, pu.header.stamp, SACFRAME, SIMFRAME)
@@ -385,7 +228,7 @@ class PendSimulator:
         self.cart_marker.pose = GM.Pose(position=GM.Point(*ptransc))
         self.marker_pub.publish(self.markers)
         qtemp = self.system.q
-        proj_func(qtemp)
+        mda.proj_func(qtemp)
         if self.system.t >= 50.0: #or abs(qtemp[0]) < 0.15 and abs(self.system.dq[0]) < 0.5: 
             rospy.loginfo("Success Time: %s"%round(self.system.t,2))
             rospy.loginfo("Final Score: %s"%round((self.i/self.n*100),2))
@@ -401,15 +244,16 @@ class PendSimulator:
         x=np.array([self.system.q[0],self.system.q[1],self.system.dq[0],self.system.dq[1]])
         xTilde = x - self.xBar # Compare to desired state
         utemp = -dot(self.KStabil, xTilde) # Calculate input
-        utemp = sat_func(utemp-self.u)
+        utemp = fb.sat_func(utemp-self.u)
         self.u=utemp+self.u
         
         #convert kinematic acceleration to new velocity&position
         veltemp = utemp/DT
         self.sacpos = self.u
-        if np.sign(self.sacvel) != np.sign(veltemp):#update wall if sac changes direction
-            self.wall = 0.#self.prevq[0]
+        #if np.sign(self.sacvel) != np.sign(veltemp):#update wall if sac changes direction
+        self.wall = self.prevq[0]
         self.sacvel = veltemp
+        print self.sacvel
         return
     
     def render_forces(self,data):
@@ -429,17 +273,16 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(BASEFRAME,CONTFRAME))
             return
         #get force magnitude
-        fsac = np.array([0.,sat_func(np.average(self.prevdq)),0.])
+        fsac = np.array([0.,0.,0.])#np.array([0.,fb.sat_func(np.average(self.prevdq)),0.])
         if (self.sacvel > 0 and SCALE*position[1] < self.wall) or \
            (self.sacvel < 0 and SCALE*position[1] > self.wall):
-            fsac = fsac+np.array([0.,Kp*(self.wall-SCALE*position[1]) \
-                             +Kd*(self.prevq[1]-self.prevq[0]),0.])
+            fsac = fsac+fb.wall_func(self.wall,self.prevq)
             self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.0])
         elif abs(SCALE*position[1] - self.prevq[1]) < SCALE*10**(-4) and self.sacvel == 0.0:
             self.sac_marker.color = ColorRGBA(*[0.05, 0.05, 1.0, 1.0])
             #self.i += 1
-        elif abs(SCALE*position[1] - self.prevq[1]) < SCALE*10**(-4):
-            self.sac_marker.color = ColorRGBA(*[0.05, 0.05, 1.0, 0.0])
+        #elif abs(SCALE*position[1] - self.prevq[1]) < SCALE*10**(-4):
+        #   self.sac_marker.color = ColorRGBA(*[0.05, 0.05, 1.0, 0.0])
         else:
             self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 1.0]) 
             self.i += 1 
