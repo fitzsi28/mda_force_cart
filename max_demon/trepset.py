@@ -4,7 +4,7 @@ from max_demon.constants import *
 import numpy as np
 import trep.discopt
 
-def build_system():
+def build_system(torque_force=False):
     sys = trep.System()
     frames = [
         ty('yc',name=CARTFRAME, mass=M,kinematic=True), [ 
@@ -13,7 +13,8 @@ def build_system():
     sys.import_frames(frames)
     trep.potentials.Gravity(sys, (0,0,-g))
     trep.forces.Damping(sys, B)
-    #trep.forces.ConfigForce(sys,'yc','cart-force')
+    if torque_force:
+        trep.forces.ConfigForce(sys, 'theta', 'theta-force')
     return sys
 ######begin SAC Setup#######
 def proj_func(x):
@@ -50,34 +51,17 @@ def build_LQR(mvisys, sys, X0):
 #######end LQR setup
 
 ######begin trajecotry optimization setup
-def generate_desired_trajectory(system, t, amp=130*pi/180):
+def generate_desired_trajectory(system, t, amp=0.):
     qd = np.zeros((len(t), system.nQ))
     theta_index = system.get_config('theta').index
     for i,t in enumerate(t):
-        if t >= 0.0 and t <= 15.0:
-            qd[i, theta_index] = pi#(1 - cos(2*mpi/4*(t-3.0)))*amp/2
+        qd[i, theta_index] = 0.
     return qd
 
 def generate_initial_trajectory(system, t, theta=0.):
     qd = np.zeros((len(t), system.nQ))
     theta_index = system.get_config('theta').index
     for i,t in enumerate(t):
-        if t >= 0.00 and t <= 15.0:
-            qd[i, theta_index] = theta
+        qd[i, theta_index] = theta
     return qd
-
-def make_state_cost(system, dsys, base, theta,x,dtheta,dx):
-    weight = base*np.ones((dsys.nX,))
-    weight[system.get_config('x').index] = x
-    weight[system.get_config('theta').index] = theta
-    weight[system.get_config('x').index+2] = dx
-    weight[system.get_config('theta').index+2] = dtheta
-    return np.diag(weight)
-
-def make_input_cost(system, dsys, base, x, theta=None):
-    weight = base*np.ones((dsys.nU,))
-    if theta is not None:
-        weight[system.get_input('theta-force').index] = theta
-    #weight[system.get_config('x').index] = x
-    return np.diag(weight)   
 ######end trajectory opt setup###
