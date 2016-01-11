@@ -12,7 +12,6 @@ from PyQt4.QtCore import Qt, QRectF, QPointF
 from PyQt4.QtGui import QColor
 import matplotlib.pyplot as plt
 import traj_opt as to
-#from traj_opt import *
 
 
 # Build cart system with torque input on pendulum.
