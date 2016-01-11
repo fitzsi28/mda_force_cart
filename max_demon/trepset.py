@@ -58,10 +58,12 @@ def generate_desired_trajectory(system, t, amp=0.):
         qd[i, theta_index] = 0.
     return qd
 
-def generate_initial_trajectory(system, t, theta=0.):
+def generate_initial_trajectory(system, t, theta=0.,y=0.):
     qd = np.zeros((len(t), system.nQ))
     theta_index = system.get_config('theta').index
+    y_index = system.get_config('yc').index
     for i,t in enumerate(t):
         qd[i, theta_index] = theta
+        qd[i, y_index] = y
     return qd
 ######end trajectory opt setup###
