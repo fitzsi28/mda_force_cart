@@ -2,10 +2,10 @@
 # GLOBAL CONSTANTS #
 ####################
 TF = 50.0
-DT = 1./60.
-TS = 1./2.
+DT = 1./30.
+TS = 1./5.
 DT2 = 1./300.
-HORIZ = 1.3
+HORIZ = TS#1.3
 M = 0.1 #kg
 L = 2.0 # m
 B = 0.01 # damping

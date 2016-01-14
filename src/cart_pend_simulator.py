@@ -45,7 +45,7 @@ import visualization_msgs.msg as VM
 ###################
 import trep
 #from trep import tx, ty, tz, rx, ry, rz
-#import trep.discopt#sactrep
+import trep.discopt as discopt#sactrep
 import numpy as np
 from numpy import dot
 import copy
@@ -54,6 +54,7 @@ import max_demon as mda
 from max_demon.constants import *
 import max_demon.force_fb as fb
 from max_demon import rvizmarks
+from max_demon import traj_opt as to
 
 class PendSimulator:
 
@@ -71,6 +72,7 @@ class PendSimulator:
         self.wall=0.
         self.i = 0.
         self.n = 0.
+        
         
         # setup markers
         self.setup_markers()
@@ -108,10 +110,12 @@ class PendSimulator:
         
     def setup_integrator(self):
         self.system = mda.build_system()
-        self.sactrep = mda.build_system()
         self.mvi = trep.MidpointVI(self.system)
-        #[self.KStabil, self.dsys, self.xBar]=build_LQR(self.mvi, self.system)
-                            
+        self.to_sysa = mda.build_system(True)
+        self.to_mvia = trep.MidpointVI(self.to_sysa)
+        self.to_sysb = mda.build_system()
+        self.to_mvib = trep.MidpointVI(self.to_sysb)
+        
         # get the position of the omni in the trep frame
         if self.listener.frameExists(SIMFRAME) and self.listener.frameExists(CONTFRAME):
             t = self.listener.getLatestCommonTime(SIMFRAME, CONTFRAME)
@@ -128,22 +132,35 @@ class PendSimulator:
 
         self.q0 = np.array([-0.1, SCALE*position[1]])#X=[th,yc]
         self.dq0 = np.zeros(self.system.nQd) 
-        x0=np.array([self.q0[0],self.q0[1],0.,0.])
+        q0=np.array([self.q0[0],self.q0[1],0.,0.])
         
-        [self.KStabil, self.dsys, self.xBar]=mda.build_LQR(self.mvi, self.system, x0)
         
+                
         self.mvi.initialize_from_state(0, self.q0, self.dq0)
         self.u=self.mvi.q1[1]
-        #compute LQR control
-        x=np.array([self.system.q[0],self.system.q[1],self.system.dq[0],self.system.dq[1]])
-        xTilde = x - self.xBar # Compare to desired state
-        utemp = -dot(self.KStabil, xTilde) # Calculate input
-        utemp = fb.sat_u(utemp-self.u)
-        self.u=utemp+self.u
+        #compute LQ control
+        t = np.arange(0.0, HORIZ, 1./60.)
+        dsys_a = discopt.DSystem(self.to_mvia,t)
+        dsys_b = discopt.DSystem(self.to_mvib,t)
+        self.Qcost = to.make_state_cost(self.to_sysa, dsys_a, 1, 200,0,0,20)
+        self.Rcost = to.make_input_cost(self.to_sysa, dsys_a, 0.3, 0.3, 0.3)
+        #    Generate an initial trajectory
+        q0,dq0d,dq0k = mda.generate_initial_trajectory(self.to_sysa, t, self.q0[0],self.q0[1])
+        (X,U) = dsys_a.build_trajectory(q0)
+        for k in range(dsys_a.kf()):  
+            if k == 0:
+                dsys_a.set(X[k], U[k], 0) #set the current state, input and time of the discrete system
+            else:
+                dsys_a.step(U[k])
+            X[k+1] = dsys_a.f() #the next state of the system
+        #       Generate cost function
+        qd = mda.generate_desired_trajectory(self.to_sysa, t,0.)
+        (Xd, Ud) = dsys_a.build_trajectory(qd)
+        finished, X,U = to.to_sol(self.to_sysa,t,dsys_a, dsys_b,X,U,Xd,Ud,self.Qcost,self.Rcost)
         
         #convert kinematic acceleration to new velocity&position
-        self.sacvel = utemp/DT
-        self.sacpos = self.u        
+        self.sacvel = X[6,3]
+        self.sacpos = X[6,1]       
         self.wall = SCALE*position[1]
         #reset score values
         self.i = 0.
@@ -190,7 +207,7 @@ class PendSimulator:
         temp.y = self.system.q[1]
         temp.dtheta = self.system.dq[0]
         temp.dy = self.system.dq[1] #np.average(self.prevdq)
-        temp.sac = self.u
+        temp.sac = self.sacvel
         self.trep_pub.publish(temp)
         
         
@@ -209,10 +226,10 @@ class PendSimulator:
         self.br.sendTransform(ptransc, qtransc, pc.header.stamp, CARTFRAME, SIMFRAME)
         
         ####for the arrow marker
-        gwu = copy.copy(gwc)###keep
-        gwu.itemset((1,3), self.sacpos)###keep
+        gwu = copy.copy(gwc)
+        gwu.itemset((1,3), self.sacpos)
         [pu,ptransu]=rvizmarks.pub_point(gwu)
-        self.dir_pub.publish(pu)###keep
+        self.dir_pub.publish(pu)
         # now we can send the transform:
         qtransu = TR.quaternion_from_matrix(gwu)
         self.br.sendTransform(ptransu, qtransu, pu.header.stamp, SACFRAME, SIMFRAME)
@@ -242,15 +259,26 @@ class PendSimulator:
         if not self.running_flag:
             return
         #compute LQR control
-        x=np.array([self.system.q[0],self.system.q[1],self.system.dq[0],self.system.dq[1]])
-        xTilde = x - self.xBar # Compare to desired state
-        utemp = -dot(self.KStabil, xTilde) # Calculate input
-        utemp = fb.sat_u(utemp-self.u)
-        self.u=utemp+self.u
+        t = np.arange(self.system.t, self.system.t+HORIZ, DT)
+        dsys_a = discopt.DSystem(self.to_mvia, t)#can this take short time intervals like 1/5? yes!
+        dsys_b = discopt.DSystem(self.to_mvib, t)
+        qd = mda.generate_desired_trajectory(self.to_sysa, t,0.)
+        # Generate an initial trajectory
+        q0,dq0d,dq0k = mda.generate_initial_trajectory(self.to_sysa, t, self.system.q[0],self.system.q[1],self.system.dq[0],self.system.dq[1])
+        (X,U) = dsys_a.build_trajectory(q0,dq0d,dq0k)
+        for k in range(dsys_a.kf()):  
+            if k == 0:
+                dsys_a.set(X[k], U[k], 0) #set the current state, input and time of the discrete system
+            else:
+                dsys_a.step(U[k])
+            X[k+1] = dsys_a.f() #the next state of the system
+        (Xd, Ud) = dsys_a.build_trajectory(qd)
+        finished, Xtemp,Utemp = to.to_sol(self.to_sysa,t,dsys_a, dsys_b,X,U,Xd,Ud,self.Qcost,self.Rcost)
         
+               
         #convert kinematic acceleration to new velocity&position
-        veltemp = utemp/DT
-        self.sacpos = self.u
+        veltemp = X[-1,3]
+        self.sacpos = X[-1,1]
         #if np.sign(self.sacvel) != np.sign(veltemp):#update wall if sac changes direction
         self.wall = self.prevq[0]
         self.sacvel = veltemp
@@ -292,6 +320,7 @@ class PendSimulator:
         # the following transform was figured out only through
         # experimentation. The frame that forces are rendered in is not aligned
         # with /trep_world or /base:
+        fsac = np.array([0.,0.,0.])
         fvec = np.array([fsac[1], fsac[2], fsac[0]])
         f = GM.Vector3(*fvec)
         p = GM.Vector3(*position)

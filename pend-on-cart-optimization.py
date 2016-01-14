@@ -23,7 +23,7 @@ mvi_b = trep.MidpointVI(system_b)
 dsys_b = discopt.DSystem(mvi_b, t)
 
 # Generate an initial trajectory
-q0,dq0d,dq0k = mda.generate_initial_trajectory(system, t, 0.3)
+q0,dq0d,dq0k = mda.generate_initial_trajectory(system, t, 0.2)
 (X,U) = dsys_a.build_trajectory(q0)
 for k in range(dsys_a.kf()):  
     if k == 0:
