@@ -23,22 +23,24 @@ def make_input_cost(system, dsys, base, x, theta=None):
 def to_sol(sys,t,dsysa, dsysb, X, U, Xd, Ud,Q,R):
     base = R[0,0]
     cost = discopt.DCost(Xd, Ud, Q, R) 
+    
 
     optimizer = discopt.DOptimizer(dsysa, cost)#printing default monitoring information
     optimizer.optimize_ic = False
+    #optimizer.monitor=silent
     # Perform the first optimization
-    optimizer.first_method_iterations = 4
+    optimizer.first_method_iterations = 8
     finished, X, U = optimizer.optimize(X, U, max_steps=40)
 
     # Increase the cost of the torque input
     cost.R = make_input_cost(sys,dsysa, base, base, 100.0)
-    optimizer.first_method_iterations = 4
+    #optimizer.first_method_iterations = 6
     finished, X, U = optimizer.optimize(X, U, max_steps=40)
 
 
     # Increase the cost of the torque input
     cost.R = make_input_cost(sys, dsysa, base, base, 1000000.0)
-    optimizer.first_method_iterations = 4
+    #optimizer.first_method_iterations = 6
     finished, X, U = optimizer.optimize(X, U, max_steps=40)
 
 
@@ -70,3 +72,4 @@ def to_sol(sys,t,dsysa, dsysb, X, U, Xd, Ud,Q,R):
     optimizer.first_method_iterations = 4
     finished, X, U = optimizer.optimize(X, U, max_steps=40)
     return [finished,X,U]
+

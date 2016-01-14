@@ -93,7 +93,8 @@ class PendSimulator:
 
     def setup_markers(self):
         self.markers = VM.MarkerArray()
-        [self.mass_marker, self.link_marker, self.cart_marker, self.sac_marker,self.score_marker, self.dir_marker]=rvizmarks.setup_marks()
+        [self.mass_marker, self.link_marker, self.cart_marker, self.sac_marker,self.score_marker, \
+            self.dir_marker]=rvizmarks.setup_marks()
               
         self.markers.markers.append(self.mass_marker)
         self.markers.markers.append(self.link_marker)
@@ -125,7 +126,7 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(SIMFRAME,CONTFRAME))
             return
 
-        self.q0 = np.array([0.1, SCALE*position[1]])#X=[th,yc]
+        self.q0 = np.array([-0.1, SCALE*position[1]])#X=[th,yc]
         self.dq0 = np.zeros(self.system.nQd) 
         x0=np.array([self.q0[0],self.q0[1],0.,0.])
         
@@ -137,7 +138,7 @@ class PendSimulator:
         x=np.array([self.system.q[0],self.system.q[1],self.system.dq[0],self.system.dq[1]])
         xTilde = x - self.xBar # Compare to desired state
         utemp = -dot(self.KStabil, xTilde) # Calculate input
-        utemp = fb.sat_func(utemp-self.u)
+        utemp = fb.sat_u(utemp-self.u)
         self.u=utemp+self.u
         
         #convert kinematic acceleration to new velocity&position
@@ -244,7 +245,7 @@ class PendSimulator:
         x=np.array([self.system.q[0],self.system.q[1],self.system.dq[0],self.system.dq[1]])
         xTilde = x - self.xBar # Compare to desired state
         utemp = -dot(self.KStabil, xTilde) # Calculate input
-        utemp = fb.sat_func(utemp-self.u)
+        utemp = fb.sat_u(utemp-self.u)
         self.u=utemp+self.u
         
         #convert kinematic acceleration to new velocity&position

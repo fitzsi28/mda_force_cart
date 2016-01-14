@@ -8,7 +8,9 @@ import matplotlib.pyplot as plt
 import max_demon as mda
 from max_demon import traj_opt as to
 from max_demon.constants import *
-HORIZ=1.3
+
+import time
+
 
 # Build cart system with torque input on pendulum.
 system = mda.build_system(True)
@@ -21,7 +23,7 @@ mvi_b = trep.MidpointVI(system_b)
 dsys_b = discopt.DSystem(mvi_b, t)
 
 # Generate an initial trajectory
-q0,dq0d,dq0k = mda.generate_initial_trajectory(system, t, -0.3)
+q0,dq0d,dq0k = mda.generate_initial_trajectory(system, t, 0.3)
 (X,U) = dsys_a.build_trajectory(q0)
 for k in range(dsys_a.kf()):  
     if k == 0:
@@ -43,6 +45,7 @@ tf = 10
 X1=X[0:12]
 U1=U
 while tcurr<tf:
+    tic = time.time()
     tcurr = tcurr+TS#HORIZ
     t = np.arange(tcurr, tcurr+HORIZ, DT)
     dsys_a = discopt.DSystem(mvi, t)#can this take short time intervals like 1/5? yes!
@@ -61,7 +64,8 @@ while tcurr<tf:
     finished, Xtemp,Utemp = to.to_sol(system,t,dsys_a, dsys_b,X,U,Xd,Ud,Qcost,Rcost)
     X1=np.vstack([X1,Xtemp[0:12]])
     U1=np.vstack([U1,Utemp])
-    
+    toc = time.time()
+    print "time: ", toc-tic
 t=np.linspace(0.,tcurr+TS,len(X1))#np.arange(0.,tcurr+TS,DT)
 if '--novisual' not in sys.argv:
 
