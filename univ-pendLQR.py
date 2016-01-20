@@ -6,44 +6,16 @@ from numpy import dot
 import trep
 import trep.discopt
 from trep import tx, ty, tz, rx, ry, rz
-import pylab
+import matplotlib.pyplot as plt
 
-# Build a pendulum system
-TF = 5.0# Final time
-DT = 1./60. # Sampling time
-M = 0.1 #kg
-L = 2.0 # m
-B = 0.01 # damping
-g = 9.81 #m/s^2
-MAXSTEP = 4.*DT
-MASSFRAME = "pend_mass"
-CARTFRAME = "cart"
+import max_demon as mda
+from max_demon.constants import *
+import max_demon.force_fb as fb
+from max_demon import rvizmarks
 
-
-X0 = np.array([0.15,0.,-0.1,-0.1,0.,1.0])# Initial configuration of pendulum
+X0 = np.array([0.15,0.,0.,-0.5,-0.1,0.,0.,10.0])# th,phi,x,y,dth,dphi,dx,dy
 t0 = 0.0 # Initial time
 
-"""
-qBar = np.array([0., 0.0]) # Desired configuration
-Q = np.diag([200,20,0,0]) # Cost weights for states
-R = 0.3*np.eye(1) # Cost weights for inputs
-"""
-def build_system():
-    sys = trep.System()
-    frames = [
-        tx('xs', name='x-stylus', kinematic=True), [
-            ty('yc',name=CARTFRAME, mass=M,kinematic=True), [ 
-                rx('theta', name="pendulumShoulder"), [
-                    tz(L, name=MASSFRAME, mass=M)]]]]
-    sys.import_frames(frames)
-    trep.potentials.Gravity(sys, (0,0,-g))
-    trep.forces.Damping(sys, B)
-    #trep.forces.ConfigForce(sys,'yc','cart-force')
-    return sys
-
-def accel_approx(qq):#approximation of acceleration from last 3 positions
-    order1approx = (qq[-1]-2*qq[-2]+qq[-3])/(DT**2)
-    return order1approx
 
 def sat_func(ustar):
     if ustar>MAXSTEP: 
@@ -52,43 +24,13 @@ def sat_func(ustar):
         ustar=-MAXSTEP
     return ustar
     
-system = build_system()
+system = mda.build_system()
 
 # Create and initialize the variational integrator
 mvi = trep.MidpointVI(system)
 mvi.initialize_from_configs(t0, X0[0:1], t0+DT, X0[0:1])
 
-
-
-def build_LQR(mvisys,sys):
-    qBar = np.array([0., 0.1,-0.1]) # Desired configuration
-    Q = np.diag([200,1,1,0,0,20]) # Cost weights for states
-    R = 0.3*np.eye(2) # Cost weights for inputs
-    
-    # Create discrete system
-    TVec = np.arange(0, TF+DT, DT) # Initialize discrete time vector
-    dsystem = trep.discopt.DSystem(mvisys, TVec) # Initialize discrete system
-    xB = dsystem.build_state(Q=qBar,p = np.zeros(sys.nQd)) # Create desired state configuration
-
-    # Design linear feedback controller
-    Qd = np.zeros((len(TVec), dsystem.system.nQ)) # Initialize desired configuration trajectory
-    thetaIndex = dsystem.system.get_config('theta').index # Find index of theta config variable
-    ycIndex = dsystem.system.get_config('yc').index
-    xcIndex = dsystem.system.get_config('xs').index
-    for i,t in enumerate(TVec):
-        Qd[i, thetaIndex] = qBar[0] # Set desired configuration trajectory
-        Qd[i, ycIndex] = qBar[1]
-        Qd[i, xcIndex] = qBar[2]
-        (Xd, Ud) = dsystem.build_trajectory(Qd) # Set desired state and input trajectory
-
-    Qk = lambda k: Q # Create lambda function for state cost weights
-    Rk = lambda k: R # Create lambda function for input cost weights
-    KVec = dsystem.calc_feedback_controller(Xd, Ud, Qk, Rk) # Solve for linear feedback controller gain
-    KStabil = KVec[0] # Use only use first value to approximate infinite-horizon optimal controller gain
-    dsystem.set(X0, np.array([0.,0.]), 0)
-    return (KStabil, dsystem,xB)
-
-[KStabilize, dsys, xBar]=build_LQR(mvi, system)
+[KStabilize, dsys, xBar]=mda.build_LQR(mvi, system,X0)
 
 # Reset discrete system state
 
@@ -106,7 +48,7 @@ while mvi.t1 < TF-DT:
     xTilde = x - xBar # Compare to desired state
     utemp = -dot(KStabilize, xTilde) # Calculate input
     #utemp = sat_func(utemp-u)
-    u=utemp+u
+    u=utemp#+u
     dsys.step(u) # Step the system forward by one time step
     T.append(mvi.t1) # Update lists
     Q.append(mvi.q1)
@@ -119,6 +61,17 @@ while mvi.t1 < TF-DT:
 trep.visual.visualize_3d([ trep.visual.VisualItem3D(system, T, Q) ])
 
 # Plot results
+f,ax = plt.subplots(2, sharex=True)
+#ax[0].title("Linear Feedback Controller")
+ax[0].plot(T,X)
+#ax[0].ylabel("X")
+ax[1].plot(T[1:],U)
+#ax[1].ylabel("U")
+#ax.xlabel("T")
+ax[0].legend(['th','phi','x','y'])
+ax[1].legend(['ax','ay'])
+plt.show()
+"""
 ax1 = pylab.subplot(211)
 pylab.plot(T, X)
 pylab.title("Linear Feedback Controller")
@@ -130,3 +83,4 @@ pylab.xlabel("T")
 pylab.ylabel("U")
 pylab.legend(["u"])
 pylab.show()
+"""
