@@ -126,24 +126,26 @@ class PendSimulator:
                          "for transformation from {0:s} to {1:s}".format(SIMFRAME,CONTFRAME))
             return
 
-        self.q0 = np.array([-0.1, SCALE*position[1]])#X=[th,yc]
+        self.q0 = np.array([-0.1, 0.,SCALE*position[0],SCALE*position[1]])#X=[th,xc,yc]
         self.dq0 = np.zeros(self.system.nQd) 
-        x0=np.array([self.q0[0],self.q0[1],0.,0.])
+        x0=np.array([self.q0[0],self.q0[1],self.q0[2],self.q0[3],0.,0.,0.,0.])
         
         [self.KStabil, self.dsys, self.xBar]=mda.build_LQR(self.mvi, self.system, x0)
         
         self.mvi.initialize_from_state(0, self.q0, self.dq0)
         self.u=self.mvi.q1[1]
         #compute LQR control
-        x=np.array([self.system.q[0],self.system.q[1],self.system.dq[0],self.system.dq[1]])
+        x=np.array([self.system.q[0],self.system.q[1],self.system.q[2],self.system.q[3], \
+                    self.system.dq[0],self.system.dq[1],self.system.dq[2],self.system.dq[3]])
         xTilde = x - self.xBar # Compare to desired state
         utemp = -dot(self.KStabil, xTilde) # Calculate input
-        utemp = fb.sat_u(utemp-self.u)
-        self.u=utemp+self.prevq[0]
+        #self.sacvel=(utemp-self.u)/DT
+        #utemp = fb.sat_u(utemp-self.u)
+        self.u=utemp#+self.prevq[0]
         
         #convert kinematic acceleration to new velocity&position
-        self.sacvel = utemp/DT
-        self.sacpos = self.u        
+        self.sacvel = (utemp-self.mvi.q1[1])/DT#utemp/DT
+        self.sacpos = self.u[1]        
         self.wall = SCALE*position[1]
         #reset score values
         self.i = 0.
@@ -177,6 +179,7 @@ class PendSimulator:
         # now we can use this position to integrate the trep simulation:
         ucont = np.zeros(self.mvi.nk)
         ucont[self.system.kin_configs.index(self.system.get_config('yc'))] = self.prevq[0]
+        ucont[self.system.kin_configs.index(self.system.get_config('xs'))] = SCALE*position[0]
         
         # step integrator:
         try:
@@ -245,12 +248,12 @@ class PendSimulator:
         x=np.array([self.system.q[0],self.system.q[1],self.system.dq[0],self.system.dq[1]])
         xTilde = x - self.xBar # Compare to desired state
         utemp = -dot(self.KStabil, xTilde) # Calculate input
-        utemp = fb.sat_u(utemp-self.u)
-        self.u=utemp+self.prevq[0]
+        #utemp = fb.sat_u(utemp-self.u)
+        self.u=utemp#+self.prevq[0]
         
         #convert kinematic acceleration to new velocity&position
-        veltemp = utemp/DT
-        self.sacpos = self.u
+        veltemp = (utemp-self.mvi.q1[1])/DT#utemp/DT
+        self.sacpos = self.u[1]
         #if np.sign(self.sacvel) != np.sign(veltemp):#update wall if sac changes direction
         self.wall = self.prevq[0]
         self.sacvel = veltemp
