@@ -140,9 +140,9 @@ class PendSimulator:
                     self.system.dq[0],self.system.dq[1],self.system.dq[2],self.system.dq[3]])
         xTilde = x - self.xBar # Compare to desired state
         utemp = -dot(self.KStabil, xTilde) # Calculate input
-        #self.sacvel=(utemp-self.u)/DT
-        #utemp = fb.sat_u(utemp-self.u)
-        self.u=utemp#+self.prevq[0]
+        self.sacvel=(utemp-self.u)/DT
+        utemp = fb.sat_u(utemp-self.u)
+        self.u=utemp+self.prevq[0]
         
         #convert kinematic acceleration to new velocity&position
         self.sacvel = (utemp-self.mvi.q1[1])/DT#utemp/DT
@@ -248,11 +248,12 @@ class PendSimulator:
         if not self.running_flag:
             return
         #compute LQR control
-        x=np.array([self.system.q[0],self.system.q[1],self.system.dq[0],self.system.dq[1]])
+        x=np.array([self.system.q[0],self.system.q[1],self.system.q[2],self.system.q[3], \
+                    self.system.dq[0],self.system.dq[1],self.system.dq[2],self.system.dq[3]])
         xTilde = x - self.xBar # Compare to desired state
         utemp = -dot(self.KStabil, xTilde) # Calculate input
-        #utemp = fb.sat_u(utemp-self.u)
-        self.u=utemp#+self.prevq[0]
+        utemp = fb.sat_u(utemp-self.u)
+        self.u=utemp+self.prevq[0]
                     
         #convert kinematic acceleration to new velocity&position
         veltemp = (utemp-self.mvi.q1[1])/DT#utemp/DT

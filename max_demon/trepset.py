@@ -73,6 +73,7 @@ def build_LQR(mvisys, sys, X0):
     KVec = dsystem.calc_feedback_controller(Xd, Ud, Qk, Rk) 
     KStabil = KVec[0] #use first value to approx infinite horzion controller gain
     dsystem.set(X0, np.array([0.,0.]), 0)
+    mvisys.initialize_from_configs(0, X0[0:4], DT, X0[0:4])
     return (KStabil, dsystem,xB)
 #######end LQR setup
 

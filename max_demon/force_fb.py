@@ -6,10 +6,14 @@ def sat_func(v):
     return f
 
 def sat_u(ustar):
-    if ustar>MAXSTEP: 
-        ustar=MAXSTEP
-    elif ustar<-MAXSTEP:
-        ustar=-MAXSTEP
+    if ustar[0]>MAXLQSTEP: 
+        ustar[0]=MAXLQSTEP
+    elif ustar[0]<-MAXLQSTEP:
+        ustar[0]=-MAXLQSTEP
+    if ustar[1]>MAXLQSTEP: 
+        ustar[1]=MAXLQSTEP
+    elif ustar[1]<-MAXLQSTEP:
+        ustar[1]=-MAXLQSTEP
     return ustar
 
 def wall_func(wall,prevq):
