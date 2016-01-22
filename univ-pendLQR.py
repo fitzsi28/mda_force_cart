@@ -21,6 +21,7 @@ system = mda.build_system()
 # Create and initialize the variational integrator
 mvi = trep.MidpointVI(system)
 mvi.initialize_from_configs(t0, X0[0:4], t0+DT, X0[0:4])
+#mvi.initialize_from_state(t0,X0[0:4],X0[4:6])
 [KStabilize, dsys, xBar]=mda.build_LQR(mvi, system,X0)
 
 
@@ -36,8 +37,8 @@ while mvi.t1 < TF-DT:
     x = dsys.xk # Grab current state
     xTilde = x - xBar # Compare to desired state
     utemp = -dot(KStabilize, xTilde) # Calculate input
-    utemp = fb.sat_u(utemp-u) 
-    u=utemp+u
+    utemp = fb.sat_u(utemp-mvi.q2[2:4]) 
+    u=utemp+mvi.q2[2:4]
     dsys.step(u) # Step the system forward by one time step
     T.append(mvi.t1) # Update lists
     Q.append(mvi.q1)

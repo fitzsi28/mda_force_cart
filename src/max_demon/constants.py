@@ -23,6 +23,6 @@ SIMFRAME = "trep_world"
 MASSFRAME = "pend_mass"
 CARTFRAME = "cart"
 XCARTFRAME = "cart-x"
-SACFRAME = "SAC"
+MDAFRAME = "MDA_control"
 NQ = 2 #number of configuration variables in the system
 NU = 1 #number of inputs in the system

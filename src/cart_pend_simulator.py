@@ -64,11 +64,11 @@ class PendSimulator:
         self.running_flag = False
         self.grey_flag = False
         self.usat = 0.
-        self.sacpos = np.zeros(2)
-        self.sacvel = np.zeros(2)
+        self.LQpos = np.zeros(2)
+        self.LQvel = np.zeros(2)
         self.prevq = np.zeros([5,2])
         self.prevdq = np.zeros([20,2])
-        self.wall=0.
+        self.wall = np.zeros(2)
         self.i = 0.
         self.n = 0.
         
@@ -125,7 +125,12 @@ class PendSimulator:
             rospy.logerr("Could not find required frames "\
                          "for transformation from {0:s} to {1:s}".format(SIMFRAME,CONTFRAME))
             return
-
+        #update position and velocity arrays
+        self.prevq = np.vstack((SCALE*np.array([position[0],position[1]]),self.prevq))
+        self.prevq = np.delete(self.prevq, -1,0)
+        self.prevdq = np.vstack([self.system.dq[2:4],self.prevdq])
+        self.prevdq = np.delete(self.prevdq, -1,0)
+        
         self.q0 = np.array([-0.1, 0.,SCALE*position[0],SCALE*position[1]])#X=[th,xc,yc]
         self.dq0 = np.zeros(self.system.nQd) 
         x0=np.array([self.q0[0],self.q0[1],self.q0[2],self.q0[3],0.,0.,0.,0.])
@@ -133,21 +138,21 @@ class PendSimulator:
         [self.KStabil, self.dsys, self.xBar]=mda.build_LQR(self.mvi, self.system, x0)
           
         self.mvi.initialize_from_state(0, self.q0, self.dq0)
-        self.u=self.mvi.q1[2:4]
+        self.u=self.mvi.q2[2:4]
 
         #compute LQR control
         x=np.array([self.system.q[0],self.system.q[1],self.system.q[2],self.system.q[3], \
                     self.system.dq[0],self.system.dq[1],self.system.dq[2],self.system.dq[3]])
         xTilde = x - self.xBar # Compare to desired state
         utemp = -dot(self.KStabil, xTilde) # Calculate input
-        utemp = fb.sat_u(utemp-self.u)
-        self.sacpos=utemp+self.prevq[0]
+        utemp = fb.sat_u(utemp-self.mvi.q2[2:4])
+        self.LQpos=utemp+self.prevq[0]
         
         #convert kinematic acceleration to new velocity&position
-        self.sacvel = utemp/DT
-        #self.sacpos = self.u        
+        self.LQvel = utemp/DT
+        #self.LQpos = self.u        
 
-        self.wall = SCALE*position[1]
+        self.wall = self.prevq[0]
         #reset score values
         self.i = 0.
         self.n = 0.
@@ -192,7 +197,7 @@ class PendSimulator:
         temp.sys_time = self.system.t
         temp.q = self.system.q
         temp.dq = self.system.dq
-        temp.sac = self.sacvel
+        temp.sac = self.LQvel
         temp.u=self.u
         self.trep_pub.publish(temp)
         
@@ -213,14 +218,14 @@ class PendSimulator:
         
         ####for the arrow marker
         gwu = copy.copy(gwc)
-        gwu.itemset((0,3), self.sacpos[0])
-        gwu.itemset((1,3), self.sacpos[1])
+        gwu.itemset((0,3), self.LQpos[0])
+        gwu.itemset((1,3), self.LQpos[1])
         [pu,ptransu]=rvizmarks.pub_point(gwu)
         self.dir_pub.publish(pu)
 
         # now we can send the transform:
         qtransu = TR.quaternion_from_matrix(gwu)
-        self.br.sendTransform(ptransu, qtransu, pu.header.stamp, SACFRAME, SIMFRAME)
+        self.br.sendTransform(ptransu, qtransu, pu.header.stamp, MDAFRAME, SIMFRAME)
         ####end arrow marker update
         
         # now we can publish the markers:
@@ -251,16 +256,16 @@ class PendSimulator:
                     self.system.dq[0],self.system.dq[1],self.system.dq[2],self.system.dq[3]])
         xTilde = x - self.xBar # Compare to desired state
         utemp = -dot(self.KStabil, xTilde) # Calculate input
-        utemp = fb.sat_u(utemp-self.u)
-        self.sacpos=utemp+self.prevq[0]
+        utemp = fb.sat_u(utemp-self.mvi.q2[2:4])
+        self.LQpos=utemp+self.mvi.q2[2:4]
                     
         #convert kinematic acceleration to new velocity&position
         veltemp = utemp/DT
         self.u = self.mvi.v2
 
-        #if np.sign(self.sacvel) != np.sign(veltemp):#update wall if sac changes direction
+        #if np.sign(self.LQvel) != np.sign(veltemp):#update wall if sac changes direction
         self.wall = self.prevq[0,0]
-        self.sacvel = veltemp
+        self.LQvel = veltemp
         return
     
     def render_forces(self,data):
@@ -281,11 +286,10 @@ class PendSimulator:
             return
         #get force magnitude
         fsac = np.array([0.,0.,0.])#np.array([0.,fb.sat_func(np.average(self.prevdq)),0.])
-        if (self.sacvel[0] > 0 and SCALE*position[1] < self.wall) or \
-           (self.sacvel[0] < 0 and SCALE*position[1] > self.wall):
+        if dot(self.LQvel, self.mvi.v2) < 0.:
             fsac = fsac#+fb.wall_func(self.wall,self.prevq)
             self.sac_marker.color = ColorRGBA(*[0.05, 1.0, 0.05, 0.0])
-        elif abs(SCALE*position[1] - self.prevq[1,0]) < SCALE*10**(-4) and self.sacvel[0] == 0.0:
+        elif abs(SCALE*position[1] - self.prevq[1,0]) < SCALE*10**(-4) and self.LQvel[0] == 0.0:
             self.sac_marker.color = ColorRGBA(*[0.05, 0.05, 1.0, 1.0])
             #self.i += 1
         #elif abs(SCALE*position[1] - self.prevq[1]) < SCALE*10**(-4):
