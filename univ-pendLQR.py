@@ -31,7 +31,7 @@ Q = [mvi.q1] # List to hold configuration values
 X = [dsys.xk] # List to hold state values
 U = [mvi.v2] # List to hold input values
 u=mvi.q1[2:4]
-#print dsys.xk[6:8]
+
 while mvi.t1 < TF-DT:
     x = dsys.xk # Grab current state
     xTilde = x - xBar # Compare to desired state
