@@ -10,10 +10,10 @@
 NotebookFileLineBreakTest
 NotebookFileLineBreakTest
 NotebookDataPosition[       158,          7]
-NotebookDataLength[    298411,       5126]
-NotebookOptionsPosition[    297473,       5094]
-NotebookOutlinePosition[    297813,       5109]
-CellTagsIndexPosition[    297770,       5106]
+NotebookDataLength[    298658,       5134]
+NotebookOptionsPosition[    297720,       5102]
+NotebookOutlinePosition[    298060,       5117]
+CellTagsIndexPosition[    298017,       5114]
 WindowFrame->Normal*)
 
 (* Beginning of Notebook Content *)
@@ -380,6 +380,9 @@ Cell[CellGroupData[{
 Cell[BoxData[{
  RowBox[{
   RowBox[{"Tf", "=", "15"}], ";"}], "\[IndentingNewLine]", 
+ RowBox[{
+  RowBox[{"ts", " ", "=", " ", 
+   RowBox[{"1", "/", "10"}]}], ";"}], "\[IndentingNewLine]", 
  RowBox[{"umax", " ", "=", " ", "4.8"}], "\[IndentingNewLine]", 
  RowBox[{"P", "=", 
   RowBox[{"NormalDistribution", "[", 
@@ -423,7 +426,8 @@ Cell[BoxData[{
   3.6702478397683067`*^9, 3.670247922633541*^9}, {3.670254632809828*^9, 
   3.670254666472867*^9}, {3.6702547739746532`*^9, 3.670254810252665*^9}, {
   3.670254938080494*^9, 3.670254949110187*^9}, {3.670260016233534*^9, 
-  3.670260080814598*^9}, {3.67026019118226*^9, 3.670260206110528*^9}}],
+  3.670260080814598*^9}, {3.67026019118226*^9, 3.670260206110528*^9}, {
+  3.670677295016564*^9, 3.6706773002631483`*^9}}],
 
 Cell[BoxData["4.8`"], "Output",
  CellChangeTimes->{{3.6702479124988403`*^9, 3.67024792373555*^9}, {
@@ -462,8 +466,9 @@ Cell[BoxData[
                  None, Evaluator -> Automatic, Method -> "Preemptive"], 
                 Alignment -> {Center, Center}, ImageSize -> 
                 Dynamic[{
-                  Automatic, 3.5 CurrentValue["FontCapHeight"]/
-                   AbsoluteCurrentValue[Magnification]}]], 
+                  Automatic, 
+                   3.5 (CurrentValue["FontCapHeight"]/AbsoluteCurrentValue[
+                    Magnification])}]], 
                GraphicsBox[{{{}, {}, {
                    Directive[
                     Opacity[1.], 
@@ -507,8 +512,9 @@ XBkTQG34+LdL/CtAvaeEx3Y0BkAn/Fy4cHksQNCIIWhyLgHAtfb1ox0BLUB6
                  GridLines -> {None, None}, GridLinesStyle -> Directive[
                    GrayLevel[0.5, 0.4]], ImageSize -> 
                  Dynamic[{
-                   Automatic, 3.5 CurrentValue["FontCapHeight"]/
-                    AbsoluteCurrentValue[Magnification]}], 
+                   Automatic, 
+                    3.5 (CurrentValue["FontCapHeight"]/AbsoluteCurrentValue[
+                    Magnification])}], 
                  Method -> {
                   "DefaultBoundaryStyle" -> Automatic, "DefaultMeshStyle" -> 
                    AbsolutePointSize[6], "ScalingFunctions" -> None}, 
@@ -554,8 +560,9 @@ XBkTQG34+LdL/CtAvaeEx3Y0BkAn/Fy4cHksQNCIIWhyLgHAtfb1ox0BLUB6
                  None, Evaluator -> Automatic, Method -> "Preemptive"], 
                 Alignment -> {Center, Center}, ImageSize -> 
                 Dynamic[{
-                  Automatic, 3.5 CurrentValue["FontCapHeight"]/
-                   AbsoluteCurrentValue[Magnification]}]], 
+                  Automatic, 
+                   3.5 (CurrentValue["FontCapHeight"]/AbsoluteCurrentValue[
+                    Magnification])}]], 
                GraphicsBox[{{{}, {}, {
                    Directive[
                     Opacity[1.], 
@@ -599,8 +606,9 @@ XBkTQG34+LdL/CtAvaeEx3Y0BkAn/Fy4cHksQNCIIWhyLgHAtfb1ox0BLUB6
                  GridLines -> {None, None}, GridLinesStyle -> Directive[
                    GrayLevel[0.5, 0.4]], ImageSize -> 
                  Dynamic[{
-                   Automatic, 3.5 CurrentValue["FontCapHeight"]/
-                    AbsoluteCurrentValue[Magnification]}], 
+                   Automatic, 
+                    3.5 (CurrentValue["FontCapHeight"]/AbsoluteCurrentValue[
+                    Magnification])}], 
                  Method -> {
                   "DefaultBoundaryStyle" -> Automatic, "DefaultMeshStyle" -> 
                    AbsolutePointSize[6], "ScalingFunctions" -> None}, 
@@ -5093,7 +5101,7 @@ Cell[BoxData[
   3.67026130120107*^9, 3.670261341768557*^9}}]
 },
 WindowSize->{1158, 1028},
-WindowMargins->{{Automatic, -10}, {-10, Automatic}},
+WindowMargins->{{Automatic, -10}, {Automatic, -10}},
 FrontEndVersion->"10.3 for Linux x86 (64-bit) (October 9, 2015)",
 StyleDefinitions->"Default.nb"
 ]
@@ -5117,17 +5125,17 @@ Cell[2245, 61, 10835, 268, 65, "Output"],
 Cell[13083, 331, 1972, 43, 225, "Output"]
 }, Open  ]],
 Cell[CellGroupData[{
-Cell[15092, 379, 1840, 46, 231, "Input"],
-Cell[16935, 427, 244, 3, 32, "Output"],
-Cell[17182, 432, 313, 5, 32, "Output"],
-Cell[17498, 439, 260, 3, 32, "Output"],
-Cell[17761, 444, 11233, 219, 65, "Output"],
-Cell[28997, 665, 124983, 1949, 233, 92857, 1421, "CachedBoxData", "BoxData", \
+Cell[15092, 379, 1995, 50, 253, "Input"],
+Cell[17090, 431, 244, 3, 32, "Output"],
+Cell[17337, 436, 313, 5, 32, "Output"],
+Cell[17653, 443, 260, 3, 32, "Output"],
+Cell[17916, 448, 11325, 223, 65, "Output"],
+Cell[29244, 673, 124983, 1949, 233, 92857, 1421, "CachedBoxData", "BoxData", \
 "Output"],
-Cell[153983, 2616, 66274, 1097, 227, "Output"],
-Cell[220260, 3715, 66379, 1099, 227, "Output"]
+Cell[154230, 2624, 66274, 1097, 227, "Output"],
+Cell[220507, 3723, 66379, 1099, 227, "Output"]
 }, Open  ]],
-Cell[286654, 4817, 10815, 275, 891, "Input"]
+Cell[286901, 4825, 10815, 275, 891, "Input"]
 }
 ]
 *)
