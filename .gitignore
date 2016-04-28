@@ -6,3 +6,6 @@
 
 #compiled files
 *.pyc
+
+#reference files
+cartPend_SAC-IA.nb
