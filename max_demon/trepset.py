@@ -8,38 +8,38 @@ import sactrep
 def build_system(torque_force=False):
     sys = trep.System()
     frames = [
-        tx('xs', name=XCARTFRAME, kinematic=True), [
-            ty('yc',name=CARTFRAME, mass=M,kinematic=True), [ 
-                rx('theta', name="Shoulder1"), [
-                    ry('phi',name="shoulder2"),[
-                        tz(L, name=MASSFRAME, mass=M)]]]]]
+        ty('yc',name=CARTFRAME, mass=M,kinematic=True), [ 
+            rx('theta', name="Shoulder1"), [
+                tz(L, name=MASSFRAME, mass=M)]]]
     sys.import_frames(frames)
     trep.potentials.Gravity(sys, (0,0,-g))
     trep.forces.Damping(sys, B)
     if torque_force:
         trep.forces.ConfigForce(sys, 'theta', 'theta-force')
     return sys
+
 ######begin SAC Setup#######
 def proj_func(x):
     x[0] = np.fmod(x[0]+np.pi, 2.0*np.pi)
     if(x[0] < 0):
         x[0] = x[0]+2.0*np.pi
     x[0] = x[0] - np.pi
+    """
     x[1] = np.fmod(x[1]+np.pi, 2.0*np.pi)
     if(x[1] < 0):
         x[1] = x[1]+2.0*np.pi
     x[1] = x[1] - np.pi
-
+    """
 def build_sac_control(sys):
     sacsyst = sactrep.Sac(sys)
     sacsyst.T = 1.2
     sacsyst.lam = -5
     sacsyst.maxdt = 0.2
     sacsyst.ts = DT
-    sacsyst.usat = [[MAXSTEP, -MAXSTEP],[MAXSTEP, -MAXSTEP]]
+    sacsyst.usat = [[MAXSTEP, -MAXSTEP]]
     sacsyst.calc_tm = DT
     sacsyst.u2search = True
-    sacsyst.Q = np.diag([200,200,20,20,0,0,1,1]) # th, phi,x,y, thd,phid, xd,yd
+    sacsyst.Q = np.diag([200,20,0,1]) # th, y, thd,yd
     sacsyst.P = np.diag(np.zeros(2*sys.nQ))
     sacsyst.R = 0.3*np.identity(sys.nQk+sys.nu)
     sacsyst.set_proj_func(proj_func)

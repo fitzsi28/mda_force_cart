@@ -4,65 +4,21 @@ from trep import tx, ty, tz, rx, ry, rz
 import sactrep
 import matplotlib.pyplot as plt
 import time
+import max_demon as mda
+from max_demon.constants import *
+import max_demon.force_fb as fb
+from max_demon import rvizmarks
 
-# set mass, length, and gravity:
-DT = 1./20.
-M = 0.1 #kg
-L = 2.0 # m
-B = 0.01 # damping
-g = 9.81 #m/s^2
-MAXSTEP = 20.0 #m/s^2
-BASEFRAME = "base"
-CONTFRAME = "stylus"
-SIMFRAME = "trep_world"
-MASSFRAME = "pend_mass"
-CARTFRAME = "cart"
-nU=2
 # define initial config and velocity
 
-q0 = np.array([np.pi-0.1,0.]) # x = [yc,theta]
+q0 = np.array([np.pi+0.01,0.]) # x = [yc,theta]
 dq0 = np.array([0., 0.])
 
 # define time parameters:
 tf = 15.0
 
-def build_system():
-    sys = trep.System()
-    frames = [
-        ty('yc',name=CARTFRAME, mass=M,kinematic=True), [ 
-            rx('theta', name="pendulumShoulder"), [
-                tz(L, name=MASSFRAME, mass=M)]]]
-    sys.import_frames(frames)
-    trep.potentials.Gravity(sys, (0,0,-g))
-    trep.forces.Damping(sys, B)
-    #trep.forces.ConfigForce(sys, 'theta', 'theta-force')
-    #trep.forces.ConfigForce(sys,'yc','cart-force')
-    return sys
-
-def proj_func(x):
-    x[0] = np.fmod(x[0]+np.pi, 2.0*np.pi)
-    if(x[0] < 0):
-        x[0] = x[0]+2.0*np.pi
-    x[0] = x[0] - np.pi
-
-
-def build_sac_control(sys):
-    sacsyst = sactrep.Sac(sys)
-    sacsyst.T = 1.2
-    sacsyst.lam = -5
-    sacsyst.maxdt = 0.2
-    sacsyst.ts = DT
-    sacsyst.usat = [[MAXSTEP, -MAXSTEP]]
-    sacsyst.calc_tm = DT
-    sacsyst.u2search = True
-    sacsyst.Q = np.diag([200,20,0,1]) # th, x, thd, xd
-    sacsyst.P = np.diag([0,0,0,0])
-    sacsyst.R = 0.3*np.identity(system.nu+system.nQk)
-    sacsyst.set_proj_func(proj_func)
-    return sacsyst
-
-system = build_system()
-sacsys = build_sac_control(system)
+system = mda.build_system()
+sacsys = mda.build_sac_control(system)
 
 # set initial conditions:
 system.q = q0
@@ -89,7 +45,7 @@ while sacsys.time < tf:
     u.append(sacsys.controls[0])
     T.append(sacsys.time)
     qtemp = system.q
-    proj_func(qtemp)
+    mda.proj_func(qtemp)
     Q = np.vstack((Q,qtemp))
     if np.abs(sacsys.time%1)<DT:
         print "ddq = ",system.ddq
