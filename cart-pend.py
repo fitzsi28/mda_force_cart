@@ -11,7 +11,7 @@ from max_demon import rvizmarks
 
 # define initial config and velocity
 
-q0 = np.array([np.pi+0.01,0.]) # x = [yc,theta]
+q0 = np.array([np.pi+0.001,0.]) # x = [yc,theta]
 dq0 = np.array([0., 0.])
 
 # define time parameters:
